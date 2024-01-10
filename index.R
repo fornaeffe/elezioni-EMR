@@ -2,29 +2,7 @@
 library(readxl)
 library(stringr)
 library(data.table)
-
-Hare.Niemeyer <- function(votes, seats, details = FALSE) {
-  if (seats > 0) {
-    q <- sum(votes) / seats
-    quotients <- votes %/% q
-    still.to.assign <- seats - sum(quotients)
-    remainders <- votes %% q
-    remainders.order <- order(remainders, votes, runif(length(votes)), decreasing = TRUE)
-    remainders.seats <- rep(0, length(votes))
-    remainders.seats[remainders.order[1:still.to.assign]] <- 1
-    assigned <- quotients + remainders.seats 
-  } else {
-    assigned <- rep(0, length(votes))
-    remainders <- votes
-    remainders.seats <- rep(0, length(votes))
-  }
-  
-  if (details) {
-    return( data.frame(assigned = assigned, remainders = remainders, remainders.seats = remainders.seats ))
-  } else return(assigned)
-}
-
-
+library(parallel)
 
 #### Importazione dati ####
 
@@ -368,6 +346,7 @@ camera_2018 <- NULL
 camera_2022 <- NULL
 
 dati_precedenti <- dati_precedenti[dati_precedenti$REGIONE == "EMILIA-ROMAGNA"]
+province <- province[province$PROVINCIA %in% dati_precedenti$PROVINCIA, ]
 
 # Questo è servito per esportare i nomi delle liste
 write.csv2(
@@ -476,7 +455,7 @@ aree <- aggregate(
 )
 
 
-popolazione <- sum(province$POP_2011)
+popolazione <- sum(aree$POP_AREA)
 
 aree$LOG_P <- log(aree$POP_AREA / popolazione)
 
@@ -512,22 +491,19 @@ aree <- merge(aree, liste_reg, by.x = "AREA", by.y = "LISTA")
 
 #### Simulazione ####
 
+
+
 simula <- function(
     iterazioni = 200
 ) {
   
   iterazione <- function(
     iter = 1,
-    ramo = "camera",
-    liste_naz,
-    dati,
-    log_astensione,
-    log_astensione_sd,
     aree,
-    popolazione,
     prov_area,
-    base_dati,
-    variab
+    popolazione,
+    variab,
+    province
   ) {
     #### Simulazione percentuali regionali ####
     
@@ -550,38 +526,56 @@ simula <- function(
     
     prov_area$VOTANTI_LOCALI <- prov_area$VOTANTI * prov_area$PERCENTUALE_AREA
     
+    prov_area$PERCENTUALE_BASE <- prov_area$VOTANTI_LOCALI / prov_area$POP_2011
+    
+    prov_area$LOG_P_BASE <- log(prov_area$PERCENTUALE_BASE)
+    
+    prov_area$LOG_P_ITER <- rnorm(
+      prov_area$LOG_P_BASE,
+      prov_area$LOG_P_BASE,
+      variab
+    )
+    
+    prov_area$PERCENTUALE_ITER <- ave(
+      prov_area$LOG_P_ITER,
+      prov_area$PROVINCIA,
+      FUN = function(x) exp(x) / sum(exp(x))
+    )
+    
+    prov_area$VOTI_LISTA_ITER <- prov_area$POP_2011 * prov_area$PERCENTUALE_ITER
+    
+    scrutinio <- Scrutinio(
+      prov_area,
+      province
+    )
+    
     # TODO continua
     
   }
+  
+  cl <- makeCluster(parallel::detectCores())
+  
+  clusterEvalQ(
+    cl,
+    source("scrutinio.R")
+  )
+  
+  lista_risultati <- parLapply(
+    cl,
+    seq_len(iterazioni),
+    iterazione,
+    aree = aree,
+    prov_area = prov_area,
+    popolazione = popolazione,
+    variab = variab,
+    province = province
+  )
+  
+  stopCluster(cl)
+  
+  # TODO continua
+  
 }
 
-# Art. 3
-# Individuazione dei seggi e delle circoscrizioni provinciali
 
-# 1. Quaranta dei consiglieri assegnati all'Assemblea legislativa sono eletti
-# con criterio proporzionale sulla base di liste circoscrizionali concorrenti ai
-# sensi delle disposizioni di cui all'articolo 12, comma 3, e articolo 13, comma
-# 1, mediante riparto nelle singole circoscrizioni e recupero dei voti residui
-# nel collegio unico regionale. Nove dei consiglieri assegnati alla Regione sono
-# eletti con sistema maggioritario nell'ambito dei candidati concorrenti nelle
-# liste circoscrizionali in base ai voti conseguiti dalle coalizioni di liste o
-# gruppi di liste collegati ai candidati alla carica di Presidente della Giunta
-# regionale ai sensi dell'articolo 13, comma 2, lettere da b) a f). Un seggio è
-# riservato al candidato alla carica di Presidente della Giunta regionale che ha
-# conseguito un numero di voti validi immediatamente inferiore a quello del
-# candidato proclamato eletto Presidente ai sensi dell'articolo 13, comma 3.
-
-# 2. Le circoscrizioni elettorali coincidono con i territori delle province
-# emiliano-romagnole di cui all'articolo 1, comma 2, dello Statuto regionale. La
-# ripartizione dei seggi tra le circoscrizioni è effettuata dividendo il numero
-# degli abitanti della regione per i quaranta seggi di cui al primo comma del
-# presente articolo e assegnando i seggi in proporzione alla popolazione di ogni
-# circoscrizione sulla base dei quozienti interi e dei più alti resti. La
-# popolazione è determinata in base ai risultati dell'ultimo censimento generale
-# della stessa, riportati dalla più recente pubblicazione ufficiale
-# dell'Istituto nazionale di statistica.
-
-circoscrizioni <- read_xlsx("dati/popolazione.xlsx")
-
-circoscrizioni$seggi.proporzionali <- Hare.Niemeyer(circoscrizioni$Popolazione, 40)
 
