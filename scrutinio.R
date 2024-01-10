@@ -22,11 +22,10 @@ Hare.Niemeyer <- function(votes, seats, details = FALSE) {
 
 Scrutinio <- function(
   prov_area,
-  province
+  province,
+  liste
 ) {
   
-  prov_lista <- prov_area
-  prov_lista$LISTA <- prov_lista$AREA
   prov_lista <- prov_lista[prov_lista$LISTA != "astensione", ]
   
   # Art. 3
@@ -69,6 +68,12 @@ Scrutinio <- function(
   # cui gruppo abbia ottenuto, nell'intera regione, meno del tre per cento dei
   # voti validi, se non collegato ad un candidato Presidente che ha ottenuto
   # almeno il cinque per cento dei voti nella relativa elezione.
+  
+  liste <- merge(
+    liste,
+    aggregate(VOTI_LISTA_ITER ~ LISTA, data = prov_lista, sum)
+  )
+  
   
   # TODO continua
   
