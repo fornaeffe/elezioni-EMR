@@ -21,7 +21,7 @@ Hare.Niemeyer <- function(votes, seats, details = FALSE) {
 
 
 Scrutinio <- function(
-  prov_area,
+  prov_lista,
   province,
   liste
 ) {
@@ -448,6 +448,8 @@ Scrutinio <- function(
   # di cui al primo periodo della lettera e), sia pari o superiore a ventisette,
   # escluso il seggio riservato al Presidente della Giunta regionale;
   
+  liste$SEGGI_CIRC_DA_TOGLIERE <- 0
+  
   if (
     coalizioni$VOTI_UTILI[coalizioni$CLASSIFICA == 1] < 0.4 * sum(coalizioni$VOTI_UTILI) &
     ( coalizioni$SEGGI_40[coalizioni$CLASSIFICA == 1] + bonus_vincitori ) < 27
@@ -482,8 +484,6 @@ Scrutinio <- function(
           liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[riga] -1
         liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
           liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
-        liste$SEGGI_40[riga] <-
-          liste$SEGGI_40[riga] - 1
         seggi_da_spostare <- seggi_da_spostare - 1
       } else if (sum(liste$SEGGI_DA_VOTI_RESIDUATI[liste$CLASSIFICA != 1]) > 0) {
         riga <- which(
@@ -496,8 +496,6 @@ Scrutinio <- function(
         if (length(riga) > 1) riga <- sample(riga, 1)
         liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
           liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
-        liste$SEGGI_40[riga] <-
-          liste$SEGGI_40[riga] - 1
         seggi_da_spostare <- seggi_da_spostare - 1
       } else {
         riga <- which(
@@ -510,11 +508,11 @@ Scrutinio <- function(
         if (length(riga) > 1) riga <- sample(riga, 1)
         liste$SEGGI_CIRC[riga] <-
           liste$SEGGI_CIRC[riga] - 1
-        liste$SEGGI_40[riga] <-
-          liste$SEGGI_40[riga] - 1
         seggi_da_spostare <- seggi_da_spostare - 1
         
-        # TODO: verificare che poi questo venga fatto a livello provinciale
+        liste$SEGGI_CIRC_DA_TOGLIERE[riga] <- 
+          liste$SEGGI_CIRC_DA_TOGLIERE[riga] + 1 
+        
       }
     }
     
@@ -561,8 +559,6 @@ Scrutinio <- function(
       liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[riga] -1
     liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
       liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
-    liste$SEGGI_40[riga] <-
-      liste$SEGGI_40[riga] - 1
   } else if (sum(liste$SEGGI_DA_VOTI_RESIDUATI[liste$CLASSIFICA == 2]) > 0) {
     riga <- which(
       liste$VOTI_RESIDUATI == min(
@@ -574,8 +570,6 @@ Scrutinio <- function(
     if (length(riga) > 1) riga <- sample(riga, 1)
     liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
       liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
-    liste$SEGGI_40[riga] <-
-      liste$SEGGI_40[riga] - 1
   } else {
     riga <- which(
       liste$VOTI_UTILI == min(
@@ -587,13 +581,114 @@ Scrutinio <- function(
     if (length(riga) > 1) riga <- sample(riga, 1)
     liste$SEGGI_CIRC[riga] <-
       liste$SEGGI_CIRC[riga] - 1
-    liste$SEGGI_40[riga] <-
-      liste$SEGGI_40[riga] - 1
     
-    # TODO: verificare che poi questo venga fatto a livello provinciale
+    
+    liste$SEGGI_CIRC_DA_TOGLIERE[riga] <- 
+      liste$SEGGI_CIRC_DA_TOGLIERE[riga] + 1 
   }
   
-  # TODO continua
+  #VEDI SOPRA Art. 13 comma 1 lett c
+  
+  # TODO: spostare fuori dalla funzione la determinazione del numero dei candidati
+  prov_lista <- merge(
+    prov_lista,
+    province[, c(
+      "PROVINCIA",
+      "seggi_proporzionali"
+    )]
+  )
+  names(prov_lista)[names(prov_lista) == "seggi_proporzionali"] <- "CANDIDATI"
+  
+  prov_lista$VOTI_RESIDUATI_RELATIVI <- 
+    prov_lista$VOTI_RESIDUATI / ifelse(
+      prov_lista$USA_2,
+      prov_lista$QUOZIENTE_2,
+      prov_lista$QUOZIENTE_1
+    )
+  
+  prov_lista$SEGGI_DA_VOTI_RESIDUATI <- 0
+  
+  prov_lista$ORDINE_VOTI_RESIDUATI <- ave(
+    prov_lista$VOTI_RESIDUATI_RELATIVI,
+    prov_lista$LISTA,
+    FUN = function(x) rank(- x, ties.method = "random")
+  )
+  
+  prov_lista$ORDINE_INVERSO_VR <- 
+    1 + dim(province)[1] - prov_lista$ORDINE_VOTI_RESIDUATI
+  
+  for (i in 1:dim(liste)[1]) {
+    seggi_da_rimuovere <- liste$SEGGI_CIRC_DA_TOGLIERE[i]
+    
+    j <- 1
+    while (seggi_da_rimuovere > 0) {
+      
+      riga <- which(
+        prov_lista$LISTA == liste$LISTA[i] &
+          prov_lista$ORDINE_INVERSO_VR == ( j %% dim(province)[1] )
+      )
+      
+      if (prov_lista$SEGGI_CIRC[riga]  > 0) {
+        
+        prov_lista$SEGGI_CIRC[riga] <- 
+          prov_lista$SEGGI_CIRC[riga] - 1
+        
+        seggi_da_rimuovere <- seggi_da_rimuovere - 1
+        
+        prov_lista$VOTI_RESIDUATI[riga] <- 
+          prov_lista$VOTI_RESIDUATI[riga] + ifelse(
+            prov_lista$USA_2[riga],
+            prov_lista$QUOZIENTE_2[riga],
+            prov_lista$QUOZIENTE_1[riga]
+          )
+        
+      }
+      j <- j + 1
+      if (j > 1000) stop("Art. 13 comma 1 lettera c: impossibile assegnare tutti i seggi alle circoscrizioni")
+      
+    }
+    
+    seggi_da_assegnare <- 
+      liste$SEGGI_DA_VOTI_RESIDUATI[i] + liste$SEGGI_BONUS[i]
+    j <- 1
+    while (seggi_da_assegnare > 0) {
+      riga <- which(
+        prov_lista$LISTA == liste$LISTA[i] &
+          prov_lista$ORDINE_VOTI_RESIDUATI == ( j %% dim(province)[1] )
+      )
+      if (
+        prov_lista$CANDIDATI[riga] - 
+        prov_lista$SEGGI_CIRC[riga] - 
+        prov_lista$SEGGI_DA_VOTI_RESIDUATI[riga] > 0
+      ) {
+        prov_lista$SEGGI_DA_VOTI_RESIDUATI[riga] <- 
+          prov_lista$SEGGI_DA_VOTI_RESIDUATI[riga] + 1
+        seggi_da_assegnare <- seggi_da_assegnare - 1
+      }
+      j <- j + 1
+      if (j > 1000) stop("Art. 13 comma 1 lettera c: impossibile assegnare tutti i seggi alle circoscrizioni")
+    }
+    
+  }
+  
+  coalizioni$PRESIDENTE <- coalizioni$CLASSIFICA == 1
+  coalizioni$MIGLIOR_PERDENTE <- coalizioni$CLASSIFICA == 2
+  
+  prov_lista$ELETTI <- 
+    prov_lista$SEGGI_CIRC + prov_lista$SEGGI_DA_VOTI_RESIDUATI
+  
+  return(list(
+    coalizioni = coalizioni[, c(
+      "COALIZIONE",
+      "PRESIDENTE",
+      "MIGLIOR_PERDENTE"
+    )],
+    prov_lista = prov_lista[, c(
+      "PROVINCIA",
+      "LISTA",
+      "ELETTI"
+    )]
+  ))
   
   
 }
