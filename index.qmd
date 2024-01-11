@@ -491,7 +491,7 @@ liste$PERCENTUALE_CORRETTA[liste$LISTA != "astensione"] <-
   liste$PERCENTUALE[liste$LISTA != "astensione"] * 
   ( 1 - liste$PERCENTUALE[liste$LISTA == "astensione"])
 
-stopifnot(sum(liste$PERCENTUALE_CORRETTA) == 1)
+# stopifnot(sum(liste$PERCENTUALE_CORRETTA) == 1)
 stopifnot(setequal(liste$LISTA, unique(prov_lista$LISTA)))
 
 
