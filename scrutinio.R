@@ -296,6 +296,8 @@ Scrutinio <- function(
   # il seggio alla lista di un'altra circoscrizione proseguendo nella
   # graduatoria anzidetta.
   
+  # DOPO
+  
   # 2. L'ufficio centrale regionale procede al riparto della restante quota di
   # seggi. A tal fine effettua le seguenti operazioni:
   
@@ -516,6 +518,79 @@ Scrutinio <- function(
       }
     }
     
+  }
+  
+  # 3. L'ufficio centrale regionale proclama eletto alla carica di consigliere
+  # il candidato alla carica di Presidente della Giunta regionale che ha
+  # conseguito un numero di voti validi immediatamente inferiore a quello del
+  # candidato proclamato eletto Presidente. A tal fine è utilizzato l'ultimo dei
+  # seggi eventualmente spettante alle liste circoscrizionali collegate con il
+  # medesimo candidato non eletto alla carica di Presidente della Giunta
+  # regionale assegnato ai sensi del comma 2, lettera d), ultimo periodo; in
+  # subordine è utilizzato il seggio attribuito con il resto minore o il minor
+  # voto residuo ai sensi del comma 1 tra quelli delle stesse liste; in
+  # subordine, qualora tutti i seggi spettanti alle liste collegate siano stati
+  # assegnati con quoziente intero in sede circoscrizionale, l'ufficio centrale
+  # regionale riserva il seggio che sarebbe stato attribuito alla lista
+  # circoscrizionale collegata che ha riportato la minore cifra elettorale. A
+  # parità anche di queste ultime si procede a sorteggio.
+  
+  if (sum(liste$SEGGI_BONUS_DA_RESTI[liste$CLASSIFICA == 2]) > 0) {
+    riga <- which(
+      liste$SEGGI_BONUS_RESTI == min(
+        liste$SEGGI_BONUS_RESTI[
+          liste$SEGGI_BONUS_DA_RESTI > 0 & liste$CLASSIFICA == 2
+        ]
+      ) & liste$CLASSIFICA == 2
+    )
+    if (length(riga) > 1) riga <- sample(riga, 1)
+    liste$SEGGI_BONUS_DA_RESTI[riga] <- 
+      liste$SEGGI_BONUS_DA_RESTI[riga] -1
+    liste$SEGGI_BONUS[riga] <-
+      liste$SEGGI_BONUS[riga] - 1
+  } else if  (sum(liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[liste$CLASSIFICA == 2]) > 0) {
+    riga <- which(
+      liste$RESTI_VOTI_RESIDUATI == min(
+        liste$RESTI_VOTI_RESIDUATI[
+          liste$SEGGI_DA_RESTI_VOTI_RESIDUATI > 0 & liste$CLASSIFICA == 2
+        ]
+      ) & liste$CLASSIFICA == 2
+    )
+    if (length(riga) > 1) riga <- sample(riga, 1)
+    liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[riga] <- 
+      liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[riga] -1
+    liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
+      liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
+    liste$SEGGI_40[riga] <-
+      liste$SEGGI_40[riga] - 1
+  } else if (sum(liste$SEGGI_DA_VOTI_RESIDUATI[liste$CLASSIFICA == 2]) > 0) {
+    riga <- which(
+      liste$VOTI_RESIDUATI == min(
+        liste$VOTI_RESIDUATI[
+          liste$SEGGI_DA_VOTI_RESIDUATI > 0 & liste$CLASSIFICA == 2
+        ]
+      ) & liste$CLASSIFICA == 2
+    )
+    if (length(riga) > 1) riga <- sample(riga, 1)
+    liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
+      liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
+    liste$SEGGI_40[riga] <-
+      liste$SEGGI_40[riga] - 1
+  } else {
+    riga <- which(
+      liste$VOTI_UTILI == min(
+        liste$VOTI_UTILI[
+          liste$SEGGI_CIRC > 0 & liste$CLASSIFICA == 2
+        ]
+      ) & liste$CLASSIFICA == 2
+    )
+    if (length(riga) > 1) riga <- sample(riga, 1)
+    liste$SEGGI_CIRC[riga] <-
+      liste$SEGGI_CIRC[riga] - 1
+    liste$SEGGI_40[riga] <-
+      liste$SEGGI_40[riga] - 1
+    
+    # TODO: verificare che poi questo venga fatto a livello provinciale
   }
   
   # TODO continua
