@@ -1,0 +1,7 @@
+project:
+  title: elezioni-EMR
+  render: 
+  - index.qmd
+
+
+

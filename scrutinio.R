@@ -620,12 +620,12 @@ Scrutinio <- function(
   for (i in 1:dim(liste)[1]) {
     seggi_da_rimuovere <- liste$SEGGI_CIRC_DA_TOGLIERE[i]
     
-    j <- 1
+    j <- 0
     while (seggi_da_rimuovere > 0) {
       
       riga <- which(
         prov_lista$LISTA == liste$LISTA[i] &
-          prov_lista$ORDINE_INVERSO_VR == ( j %% dim(province)[1] )
+          prov_lista$ORDINE_INVERSO_VR == ( (j %% dim(province)[1]) + 1 )
       )
       
       if (prov_lista$SEGGI_CIRC[riga]  > 0) {
@@ -644,17 +644,17 @@ Scrutinio <- function(
         
       }
       j <- j + 1
-      if (j > 1000) stop("Art. 13 comma 1 lettera c: impossibile assegnare tutti i seggi alle circoscrizioni")
+      if (j > 1000) stop("Art. 13 comma 1 lettera c: impossibile togliere tutti i seggi alle circoscrizioni")
       
     }
     
     seggi_da_assegnare <- 
       liste$SEGGI_DA_VOTI_RESIDUATI[i] + liste$SEGGI_BONUS[i]
-    j <- 1
+    j <- 0
     while (seggi_da_assegnare > 0) {
       riga <- which(
         prov_lista$LISTA == liste$LISTA[i] &
-          prov_lista$ORDINE_VOTI_RESIDUATI == ( j %% dim(province)[1] )
+          prov_lista$ORDINE_VOTI_RESIDUATI == ( (j %% dim(province)[1]) + 1 )
       )
       if (
         prov_lista$CANDIDATI[riga] - 
