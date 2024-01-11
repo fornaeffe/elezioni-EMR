@@ -103,23 +103,17 @@ Scrutinio <- function(
   
   liste$SOGLIA <- liste$SOGLIA_3 | liste$SOGLIA_COALIZIONE
   
-  liste_ammesse <- liste[
-    liste$SOGLIA,
-    c(
-      "COALIZIONE",
-      "LISTA",
-      "VOTI_LISTA_ITER"
-    )
-  ]
+  liste$VOTI_UTILI <- liste$VOTI_LISTA_ITER * liste$SOGLIA
   
-  prov_lista_ammesse <- prov_lista[
-    prov_lista$LISTA %in% liste_ammesse$LISTA,
-    c(
+  prov_lista <- merge(
+    prov_lista,
+    liste[, c(
       "LISTA",
-      "PROVINCIA",
-      "VOTI_LISTA_ITER"
-    )
-  ]
+      "SOGLIA"
+    )]
+  )
+  
+  prov_lista$VOTI_UTILI <- prov_lista$VOTI_LISTA_ITER * prov_lista$SOGLIA
   
   # Art. 12
   # Operazioni degli uffici centrali circoscrizionali
@@ -149,32 +143,32 @@ Scrutinio <- function(
   province <- merge(
     province,
     aggregate(
-      VOTI_LISTA_ITER ~
+      VOTI_UTILI ~
         PROVINCIA,
-      prov_lista_ammesse,
+      prov_lista,
       sum
     )
   )
   
   province$QUOZIENTE_1 <- 
-    floor(province$VOTI_LISTA_ITER / (province$seggi_proporzionali + 1))
+    floor(province$VOTI_UTILI / (province$seggi_proporzionali + 1))
   
   # Attribuisce quindi ad ogni lista tanti seggi quante volte il
   # quoziente elettorale risulti contenuto nella cifra elettorale di ciascuna
   # lista.
   
-  prov_lista_ammesse <- merge(
-    prov_lista_ammesse,
+  prov_lista <- merge(
+    prov_lista,
     province[, c(
       "PROVINCIA",
       "QUOZIENTE_1"
     )]
   )
   
-  prov_lista_ammesse$SEGGI_1 <- 0
+  prov_lista$SEGGI_1 <- 0
   
-  prov_lista_ammesse$SEGGI_1 <- 
-    floor(prov_lista_ammesse$VOTI_LISTA_ITER / prov_lista_ammesse$QUOZIENTE_1)
+  prov_lista$SEGGI_1 <- 
+    floor(prov_lista$VOTI_UTILI / prov_lista$QUOZIENTE_1)
   
   # Se, con il quoziente così calcolato, il numero dei seggi da
   # attribuire in complesso alle liste superi quello dei seggi assegnati alla
@@ -185,41 +179,41 @@ Scrutinio <- function(
     province,
     aggregate(
       SEGGI_1 ~ PROVINCIA,
-      prov_lista_ammesse,
+      prov_lista,
       sum
     )
   )
   
   province$QUOZIENTE_2 <-
-    floor(province$VOTI_LISTA_ITER / province$seggi_proporzionali)
+    floor(province$VOTI_UTILI / province$seggi_proporzionali)
   
-  prov_lista_ammesse <- merge(
-    prov_lista_ammesse,
+  prov_lista <- merge(
+    prov_lista,
     province[, c(
       "PROVINCIA",
       "QUOZIENTE_2"
     )]
   )
   
-  prov_lista_ammesse$SEGGI_2 <- 0
+  prov_lista$SEGGI_2 <- 0
   
-  prov_lista_ammesse$SEGGI_2 <- 
-    floor(prov_lista_ammesse$VOTI_LISTA_ITER / prov_lista_ammesse$QUOZIENTE_2)
+  prov_lista$SEGGI_2 <- 
+    floor(prov_lista$VOTI_UTILI / prov_lista$QUOZIENTE_2)
   
   province$USA_2 <- province$SEGGI_1 > province$seggi_proporzionali
   
-  prov_lista_ammesse <- merge(
-    prov_lista_ammesse,
+  prov_lista <- merge(
+    prov_lista,
     province[, c(
       "PROVINCIA",
       "USA_2"
     )]
   )
   
-  prov_lista_ammesse$SEGGI_CIRC <- ifelse(
-    prov_lista_ammesse$USA_2,
-    prov_lista_ammesse$SEGGI_2,
-    prov_lista_ammesse$SEGGI_1
+  prov_lista$SEGGI_CIRC <- ifelse(
+    prov_lista$USA_2,
+    prov_lista$SEGGI_2,
+    prov_lista$SEGGI_1
   )
   
   # I seggi che rimangono non assegnati
@@ -229,7 +223,7 @@ Scrutinio <- function(
     province,
     aggregate(
       SEGGI_CIRC ~ PROVINCIA,
-      prov_lista_ammesse,
+      prov_lista,
       sum
     )
   )
@@ -245,12 +239,12 @@ Scrutinio <- function(
   # abbiano raggiunto alcun quoziente ed i voti che, pur raggiungendo il
   # quoziente, rimangano inefficienti per mancanza di candidati;
   
-  prov_lista_ammesse$VOTI_RESIDUATI <- 
-    prov_lista_ammesse$VOTI_LISTA_ITER -
+  prov_lista$VOTI_RESIDUATI <- 
+    prov_lista$VOTI_UTILI -
     ifelse(
-      prov_lista_ammesse$USA_2,
-      prov_lista_ammesse$QUOZIENTE_2 * prov_lista_ammesse$SEGGI_2,
-      prov_lista_ammesse$QUOZIENTE_1 * prov_lista_ammesse$SEGGI_1
+      prov_lista$USA_2,
+      prov_lista$QUOZIENTE_2 * prov_lista$SEGGI_2,
+      prov_lista$QUOZIENTE_1 * prov_lista$SEGGI_1
     )
   
   # Art.13
@@ -265,11 +259,11 @@ Scrutinio <- function(
   # Successivamente procede alla somma dei predetti voti per tutte le liste
   # aventi lo stesso contrassegno;
   
-  liste_ammesse <- merge(
-    liste_ammesse,
+  liste <- merge(
+    liste,
     aggregate(
       VOTI_RESIDUATI ~ LISTA,
-      prov_lista_ammesse,
+      prov_lista,
       sum
     )
   )
@@ -286,10 +280,10 @@ Scrutinio <- function(
   # caso di parità di resti, a quei gruppi che abbiano avuto maggiori voti
   # residuati. A parità anche di questi ultimi si procede a sorteggio.
   
-  sr <- Hare.Niemeyer(liste_ammesse$VOTI_RESIDUATI, seggi_non_assegnati, TRUE)
-  liste_ammesse$SEGGI_DA_VOTI_RESIDUATI <- sr$assigned
-  liste_ammesse$RESTI_VOTI_RESIDUATI <- sr$remainders
-  liste_ammesse$SEGGI_DA_RESTI_VOTI_RESIDUATI <- sr$remainders.seats
+  sr <- Hare.Niemeyer(liste$VOTI_RESIDUATI, seggi_non_assegnati, TRUE)
+  liste$SEGGI_DA_VOTI_RESIDUATI <- sr$assigned
+  liste$RESTI_VOTI_RESIDUATI <- sr$remainders
+  liste$SEGGI_DA_RESTI_VOTI_RESIDUATI <- sr$remainders.seats
   
   # I seggi
   # spettanti a ciascun gruppo di liste vengono attribuiti alle rispettive liste
@@ -318,8 +312,8 @@ Scrutinio <- function(
     - coalizioni$VOTI_LISTA_ITER, 
     ties.method = "random"
   )
-  liste_ammesse <- merge(
-    liste_ammesse,
+  liste <- merge(
+    liste,
     coalizioni[, c(
       "COALIZIONE",
       "CLASSIFICA"
@@ -330,15 +324,199 @@ Scrutinio <- function(
   # circoscrizionali, sommando le cifre elettorali circoscrizionali attribuite
   # alle liste circoscrizionali di ogni gruppo ai sensi dell'articolo 12, comma
   # 3, lettera b);
-  coalizioni <- merge(
-    coalizioni
-  )
+  
   
   # c) determina la cifra elettorale regionale attribuita alla coalizione di
   # liste ovvero al gruppo di liste non riunito in coalizione con cui il
   # Presidente della Giunta regionale eletto ha dichiarato collegamento sommando
   # le cifre elettorali circoscrizionali attribuite alle singole liste
   # circoscrizionali che ne fanno parte;
+  coalizioni <- merge(
+    coalizioni,
+    aggregate(
+      VOTI_UTILI ~ COALIZIONE,
+      liste,
+      sum
+    )
+  )
+  
+  # individua altresì il totale
+  # dei seggi assegnati ai sensi dell'articolo 12, comma 3, e del comma 1 del
+  # presente articolo, al gruppo di liste o alla coalizione collegati al
+  # candidato alla carica di Presidente della Giunta regionale eletto;
+  
+  liste <- merge(
+    liste,
+    aggregate(
+      SEGGI_CIRC ~ LISTA,
+      prov_lista,
+      sum
+    )
+  )
+  
+  liste$SEGGI_40 <- liste$SEGGI_CIRC + liste$SEGGI_DA_VOTI_RESIDUATI
+  
+  coalizioni <- merge(
+    coalizioni,
+    aggregate(
+      SEGGI_40 ~ COALIZIONE,
+      liste,
+      sum
+    )
+  )
+  
+  # d) qualora il gruppo di liste o la coalizione di liste collegati al
+  # candidato eletto Presidente della Giunta regionale abbia conseguito con
+  # l'assegnazione di cui all'articolo 12, comma 3, e del comma 1 del presente
+  # articolo, un numero di seggi superiore a ventiquattro, escluso il seggio
+  # riservato al Presidente della Regione, assegna al medesimo gruppo di liste o
+  # gruppi di liste che fanno parte della coalizione, quattro seggi di cui al
+  # secondo periodo dell'articolo 3, comma 1.
+  
+  # A tal fine divide la somma delle cifre elettorali conseguite dai gruppi di
+  # liste circoscrizionali in questione per il numero dei seggi da ripartire;
+  # nell'effettuare l'operazione, trascura la eventuale parte frazionaria del
+  # quoziente. Divide poi la cifra elettorale di ciascun gruppo di liste per il
+  # quoziente così ottenuto: il risultato rappresenta il numero di seggi da
+  # assegnare a ciascun gruppo. I seggi che rimangono ancora da attribuire sono
+  # assegnati ai gruppi per i quali queste ultime divisioni hanno dato maggiori
+  # resti e, in caso di parità di resti, ai gruppi che hanno conseguito le
+  # maggiori cifre elettorali.
+  
+  # I seggi spettanti a ciascun gruppo di liste sono attribuiti nelle singole
+  # circoscrizioni secondo le modalità di cui al comma 1, lettera c), settimo,
+  # ottavo e nono periodo, ad iniziare dalla prima circoscrizione alla quale non
+  # è stato ancora attribuito il seggio ai sensi del comma 1, lettera c),
+  # settimo e ottavo periodo. Qualora tutti i posti della graduatoria abbiano
+  # già dato luogo all'assegnazione di seggi, l'attribuzione di ulteriori seggi
+  # ha nuovamente inizio a partire dalla prima circoscrizione della medesima
+  # graduatoria.
+  
+  # I restanti cinque seggi da assegnare sono ripartiti tra i gruppi di liste
+  # circoscrizionali non collegati al candidato alla carica di presidente eletto
+  # con le modalità previste nei precedenti periodi;
+  
+  # e) qualora il gruppo di liste o la coalizione di liste collegati al
+  # candidato eletto Presidente della Giunta regionale abbia conseguito, con
+  # l'assegnazione di cui all'articolo 12, comma 3, e di cui al comma 1 del
+  # presente articolo, un numero di seggi pari o inferiore a ventiquattro,
+  # assegna al medesimo gruppo di liste o gruppi di liste che fanno parte della
+  # coalizione, i nove seggi di cui all'articolo 3, comma 1, secondo periodo, li
+  # ripartisce fra le medesime liste e li attribuisce nelle singole
+  # circoscrizioni secondo le modalità di cui alla lettera d).
+  
+  liste$SEGGI_BONUS <- 0
+  liste$SEGGI_BONUS_RESTI <- 0
+  liste$SEGGI_BONUS_DA_RESTI <- 0
+  
+  if (coalizioni$SEGGI_40[coalizioni$CLASSIFICA == 1] > 24) {
+    bonus_vincitori <- 4
+    bonus_vinti <- 5
+  } else {
+    bonus_vincitori <- 9
+    bonus_vinti <- 0
+  }
+  
+  liste$SEGGI_BONUS[liste$CLASSIFICA == 1] <- Hare.Niemeyer(
+    liste$VOTI_UTILI[liste$CLASSIFICA == 1],
+    bonus_vincitori
+  )
+  
+  sr <- Hare.Niemeyer(
+    liste$VOTI_UTILI[liste$CLASSIFICA != 1],
+    bonus_vinti,
+    TRUE
+  )
+  
+  liste$SEGGI_BONUS[liste$CLASSIFICA != 1] <- sr$assigned
+  liste$SEGGI_BONUS_RESTI[liste$CLASSIFICA != 1] <- sr$remainders
+  liste$SEGGI_BONUS_DA_RESTI[liste$CLASSIFICA != 1] <- sr$remainders.seats
+  
+  # Verifica quindi se la cifra elettorale regionale conseguita dalla coalizione
+  # di liste ovvero dal gruppo di liste non riunito in coalizione con cui il
+  # Presidente della Giunta regionale eletto ha dichiarato collegamento, sia
+  # pari o superiore al quaranta per cento del totale dei voti validi conseguiti
+  # da tutte le coalizioni o gruppi di liste collegati ai candidati alla carica
+  # di Presidente;
+  
+  # f) nel caso in cui la verifica prevista dal secondo periodo della lettera
+  # e), dia esito negativo, verifica se il totale dei seggi conseguiti dal
+  # gruppo di liste o dalla coalizione di liste collegati al candidato eletto
+  # Presidente della Giunta regionale a seguito dell'assegnazione dei nove seggi
+  # di cui al primo periodo della lettera e), sia pari o superiore a ventisette,
+  # escluso il seggio riservato al Presidente della Giunta regionale;
+  
+  if (
+    coalizioni$VOTI_UTILI[coalizioni$CLASSIFICA == 1] < 0.4 * sum(coalizioni$VOTI_UTILI) &
+    ( coalizioni$SEGGI_40[coalizioni$CLASSIFICA == 1] + bonus_vincitori ) < 27
+  ) {
+    # qualora tale seconda verifica dia esito negativo, assegna con le modalità
+    # di cui alla lettera d) una quota aggiuntiva di seggi al gruppo di liste o
+    # ai gruppi di liste riuniti in coalizione collegati con il candidato
+    # Presidente eletto fino al raggiungimento dei ventisette seggi.
+    seggi_da_spostare <- 27 - ( coalizioni$SEGGI_40[coalizioni$CLASSIFICA == 1] + bonus_vincitori)
+    bonus_vincitori <- bonus_vincitori + seggi_da_spostare
+    
+    # Tali seggi aggiuntivi vengono tolti alle liste circoscrizionali non
+    # collegate al candidato alla carica di Presidente eletto a partire dai
+    # seggi assegnati con il resto minore o il minor voto residuo ai sensi del
+    # comma 1, e in subordine, qualora tutti i seggi siano stati assegnati con
+    # quoziente intero in sede circoscrizionale, vengono tolti i seggi
+    # attribuiti alle liste circoscrizionali non collegate al candidato alla
+    # carica di Presidente eletto che hanno riportato la minore cifra
+    # elettorale. A parità anche di queste ultime si procede a sorteggio.
+    
+    while (seggi_da_spostare > 0) {
+      if (sum(liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[liste$CLASSIFICA != 1]) > 0) {
+        riga <- which(
+          liste$RESTI_VOTI_RESIDUATI == min(
+            liste$RESTI_VOTI_RESIDUATI[
+              liste$SEGGI_DA_RESTI_VOTI_RESIDUATI > 0 & liste$CLASSIFICA != 1
+            ]
+          ) & liste$CLASSIFICA != 1
+        )
+        if (length(riga) > 1) riga <- sample(riga, 1)
+        liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[riga] <- 
+          liste$SEGGI_DA_RESTI_VOTI_RESIDUATI[riga] -1
+        liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
+          liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
+        liste$SEGGI_40[riga] <-
+          liste$SEGGI_40[riga] - 1
+        seggi_da_spostare <- seggi_da_spostare - 1
+      } else if (sum(liste$SEGGI_DA_VOTI_RESIDUATI[liste$CLASSIFICA != 1]) > 0) {
+        riga <- which(
+          liste$VOTI_RESIDUATI == min(
+            liste$VOTI_RESIDUATI[
+              liste$SEGGI_DA_VOTI_RESIDUATI > 0 & liste$CLASSIFICA != 1
+            ]
+          ) & liste$CLASSIFICA != 1
+        )
+        if (length(riga) > 1) riga <- sample(riga, 1)
+        liste$SEGGI_DA_VOTI_RESIDUATI[riga] <-
+          liste$SEGGI_DA_VOTI_RESIDUATI[riga] - 1
+        liste$SEGGI_40[riga] <-
+          liste$SEGGI_40[riga] - 1
+        seggi_da_spostare <- seggi_da_spostare - 1
+      } else {
+        riga <- which(
+          liste$VOTI_UTILI == min(
+            liste$VOTI_UTILI[
+              liste$SEGGI_CIRC > 0 & liste$CLASSIFICA != 1
+            ]
+          ) & liste$CLASSIFICA != 1
+        )
+        if (length(riga) > 1) riga <- sample(riga, 1)
+        liste$SEGGI_CIRC[riga] <-
+          liste$SEGGI_CIRC[riga] - 1
+        liste$SEGGI_40[riga] <-
+          liste$SEGGI_40[riga] - 1
+        seggi_da_spostare <- seggi_da_spostare - 1
+        
+        # TODO: verificare che poi questo venga fatto a livello provinciale
+      }
+    }
+    
+  }
   
   # TODO continua
   
