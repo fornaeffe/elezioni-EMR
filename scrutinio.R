@@ -26,6 +26,8 @@ Scrutinio <- function(
   liste
 ) {
   
+  # load("dati_per_scrutinio.RData")
+  
   prov_lista <- prov_lista[prov_lista$LISTA != "astensione", ]
   
   # Art. 3
@@ -74,6 +76,269 @@ Scrutinio <- function(
     aggregate(VOTI_LISTA_ITER ~ LISTA, data = prov_lista, sum)
   )
   
+  voti_validi <- sum(liste$VOTI_LISTA_ITER)
+  
+  liste$PERCENTUALE_DEI_VOTI_VALIDI <- liste$VOTI_LISTA_ITER / voti_validi
+  
+  liste$SOGLIA_3 <- liste$PERCENTUALE_DEI_VOTI_VALIDI >= 0.03
+  
+  coalizioni <- aggregate(
+    VOTI_LISTA_ITER ~ COALIZIONE,
+    liste,
+    sum
+  )
+  
+  coalizioni$PERCENTUALE_DEI_VOTI_VALIDI <- 
+    coalizioni$VOTI_LISTA_ITER / voti_validi
+  
+  coalizioni$SOGLIA_COALIZIONE <- coalizioni$PERCENTUALE_DEI_VOTI_VALIDI >= 0.05
+  
+  liste <- merge(
+    liste,
+    coalizioni[, c(
+      "COALIZIONE",
+      "SOGLIA_COALIZIONE"
+    )]
+  )
+  
+  liste$SOGLIA <- liste$SOGLIA_3 | liste$SOGLIA_COALIZIONE
+  
+  liste_ammesse <- liste[
+    liste$SOGLIA,
+    c(
+      "COALIZIONE",
+      "LISTA",
+      "VOTI_LISTA_ITER"
+    )
+  ]
+  
+  prov_lista_ammesse <- prov_lista[
+    prov_lista$LISTA %in% liste_ammesse$LISTA,
+    c(
+      "LISTA",
+      "PROVINCIA",
+      "VOTI_LISTA_ITER"
+    )
+  ]
+  
+  # Art. 12
+  # Operazioni degli uffici centrali circoscrizionali
+  
+
+  # 3. Compiute le suddette operazioni, l'ufficio centrale circoscrizionale:
+
+  # a) somma i voti validi, compresi quelli assegnati ai sensi del comma 1,
+  # lettera b), ottenuti da ciascun candidato alla carica di Presidente della
+  # Giunta regionale nelle singole sezioni della circoscrizione;
+
+  # b) determina la cifra elettorale circoscrizionale di ciascuna lista
+  # circoscrizionale. La cifra elettorale circoscrizionale di ogni lista
+  # circoscrizionale è data dalla somma dei voti di lista validi, compresi
+  # quelli assegnati ai sensi del comma 1, lettera b), ottenuti da ciascuna
+  # lista nelle singole sezioni della circoscrizione;
+
+  # c) procede al riparto dei seggi tra le liste in base alla cifra elettorale
+  # di ciascuna lista. A tal fine divide il totale delle cifre elettorali di
+  # tutte le liste per il numero dei seggi assegnati alla circoscrizione più
+  # uno, ottenendo così il quoziente elettorale circoscrizionale;
+  # nell'effettuare la divisione trascura la eventuale parte frazionaria del
+  # quoziente.
+  
+  
+  
+  province <- merge(
+    province,
+    aggregate(
+      VOTI_LISTA_ITER ~
+        PROVINCIA,
+      prov_lista_ammesse,
+      sum
+    )
+  )
+  
+  province$QUOZIENTE_1 <- 
+    floor(province$VOTI_LISTA_ITER / (province$seggi_proporzionali + 1))
+  
+  # Attribuisce quindi ad ogni lista tanti seggi quante volte il
+  # quoziente elettorale risulti contenuto nella cifra elettorale di ciascuna
+  # lista.
+  
+  prov_lista_ammesse <- merge(
+    prov_lista_ammesse,
+    province[, c(
+      "PROVINCIA",
+      "QUOZIENTE_1"
+    )]
+  )
+  
+  prov_lista_ammesse$SEGGI_1 <- 0
+  
+  prov_lista_ammesse$SEGGI_1 <- 
+    floor(prov_lista_ammesse$VOTI_LISTA_ITER / prov_lista_ammesse$QUOZIENTE_1)
+  
+  # Se, con il quoziente così calcolato, il numero dei seggi da
+  # attribuire in complesso alle liste superi quello dei seggi assegnati alla
+  # circoscrizione, le operazioni si ripetono con un nuovo quoziente ottenuto
+  # diminuendo di una unità il divisore. 
+  
+  province <- merge(
+    province,
+    aggregate(
+      SEGGI_1 ~ PROVINCIA,
+      prov_lista_ammesse,
+      sum
+    )
+  )
+  
+  province$QUOZIENTE_2 <-
+    floor(province$VOTI_LISTA_ITER / province$seggi_proporzionali)
+  
+  prov_lista_ammesse <- merge(
+    prov_lista_ammesse,
+    province[, c(
+      "PROVINCIA",
+      "QUOZIENTE_2"
+    )]
+  )
+  
+  prov_lista_ammesse$SEGGI_2 <- 0
+  
+  prov_lista_ammesse$SEGGI_2 <- 
+    floor(prov_lista_ammesse$VOTI_LISTA_ITER / prov_lista_ammesse$QUOZIENTE_2)
+  
+  province$USA_2 <- province$SEGGI_1 > province$seggi_proporzionali
+  
+  prov_lista_ammesse <- merge(
+    prov_lista_ammesse,
+    province[, c(
+      "PROVINCIA",
+      "USA_2"
+    )]
+  )
+  
+  prov_lista_ammesse$SEGGI_CIRC <- ifelse(
+    prov_lista_ammesse$USA_2,
+    prov_lista_ammesse$SEGGI_2,
+    prov_lista_ammesse$SEGGI_1
+  )
+  
+  # I seggi che rimangono non assegnati
+  # vengono attribuiti al collegio unico regionale;
+  
+  province <- merge(
+    province,
+    aggregate(
+      SEGGI_CIRC ~ PROVINCIA,
+      prov_lista_ammesse,
+      sum
+    )
+  )
+  
+  seggi_non_assegnati <- 
+    sum(province$seggi_proporzionali) - sum(province$SEGGI_CIRC)
+  
+  # d) stabilisce la somma dei voti residuati di ogni lista e il numero dei
+  # seggi non potuti attribuire ad alcuna lista per insufficienza di quozienti o
+  # di candidati. La determinazione della somma dei voti residuati deve essere
+  # fatta anche nel caso che tutti i seggi assegnati alla circoscrizione vengano
+  # attribuiti. Si considerano voti residuati anche quelli delle liste che non
+  # abbiano raggiunto alcun quoziente ed i voti che, pur raggiungendo il
+  # quoziente, rimangano inefficienti per mancanza di candidati;
+  
+  prov_lista_ammesse$VOTI_RESIDUATI <- 
+    prov_lista_ammesse$VOTI_LISTA_ITER -
+    ifelse(
+      prov_lista_ammesse$USA_2,
+      prov_lista_ammesse$QUOZIENTE_2 * prov_lista_ammesse$SEGGI_2,
+      prov_lista_ammesse$QUOZIENTE_1 * prov_lista_ammesse$SEGGI_1
+    )
+  
+  # Art.13
+  # Operazioni dell'ufficio centrale regionale
+  
+  # 1. L'ufficio centrale regionale, ricevuti gli estratti dei verbali da tutti
+  # gli uffici centrali circoscrizionali:
+  
+  # a) determina il numero dei seggi non attribuiti nelle circoscrizioni;
+  
+  # b) determina, per ciascuna lista, il numero dei voti residuati.
+  # Successivamente procede alla somma dei predetti voti per tutte le liste
+  # aventi lo stesso contrassegno;
+  
+  liste_ammesse <- merge(
+    liste_ammesse,
+    aggregate(
+      VOTI_RESIDUATI ~ LISTA,
+      prov_lista_ammesse,
+      sum
+    )
+  )
+  
+  # c) procede alla assegnazione ai predetti gruppi di liste dei seggi indicati
+  # alla lettera a). A tal fine divide la somma dei voti residuati di tutti i
+  # gruppi di liste per il numero dei seggi da attribuire; nell'effettuare la
+  # divisione, trascura la eventuale parte frazionaria del quoziente. Il
+  # risultato costituisce il quoziente elettorale regionale. Divide, poi, la
+  # somma dei voti residuati di ogni gruppo di liste per tale quoziente: il
+  # risultato rappresenta il numero dei seggi da assegnare a ciascun gruppo. I
+  # seggi che rimangono ancora da attribuire sono rispettivamente assegnati ai
+  # gruppi per i quali queste ultime divisioni hanno dato maggiori resti e, in
+  # caso di parità di resti, a quei gruppi che abbiano avuto maggiori voti
+  # residuati. A parità anche di questi ultimi si procede a sorteggio.
+  
+  sr <- Hare.Niemeyer(liste_ammesse$VOTI_RESIDUATI, seggi_non_assegnati, TRUE)
+  liste_ammesse$SEGGI_DA_VOTI_RESIDUATI <- sr$assigned
+  liste_ammesse$RESTI_VOTI_RESIDUATI <- sr$remainders
+  liste_ammesse$SEGGI_DA_RESTI_VOTI_RESIDUATI <- sr$remainders.seats
+  
+  # I seggi
+  # spettanti a ciascun gruppo di liste vengono attribuiti alle rispettive liste
+  # nelle singole circoscrizioni seguendo la graduatoria decrescente dei voti
+  # residuati espressi in percentuale del relativo quoziente circoscrizionale. A
+  # tal fine si moltiplica per cento il numero dei voti residuati di ciascuna
+  # lista e si divide il prodotto per il quoziente circoscrizionale. Qualora in
+  # una circoscrizione fosse assegnato un seggio ad una lista i cui candidati
+  # fossero già stati tutti esauriti, l'ufficio centrale regionale attribuisce
+  # il seggio alla lista di un'altra circoscrizione proseguendo nella
+  # graduatoria anzidetta.
+  
+  # 2. L'ufficio centrale regionale procede al riparto della restante quota di
+  # seggi. A tal fine effettua le seguenti operazioni:
+  
+  # a) proclama eletto alla carica di Presidente della Giunta regionale il
+  # candidato Presidente che nella Regione ha ottenuto il maggior numero di voti
+  # validi sommando i voti ottenuti da ciascun candidato alla carica di
+  # Presidente della Giunta regionale nelle singole circoscrizioni di cui
+  # all'articolo 12, comma 3, lettera a). Individua, altresì, il candidato alla
+  # carica di Presidente che ha ottenuto il totale dei voti validi
+  # immediatamente inferiore al candidato proclamato eletto, ai fini della
+  # riserva di un seggio da effettuare con le modalità di cui al comma 3;
+  
+  coalizioni$CLASSIFICA <- rank(
+    - coalizioni$VOTI_LISTA_ITER, 
+    ties.method = "random"
+  )
+  liste_ammesse <- merge(
+    liste_ammesse,
+    coalizioni[, c(
+      "COALIZIONE",
+      "CLASSIFICA"
+    )]
+  )
+  
+  # b) determina la cifra elettorale regionale di ciascun gruppo di liste
+  # circoscrizionali, sommando le cifre elettorali circoscrizionali attribuite
+  # alle liste circoscrizionali di ogni gruppo ai sensi dell'articolo 12, comma
+  # 3, lettera b);
+  coalizioni <- merge(
+    coalizioni
+  )
+  
+  # c) determina la cifra elettorale regionale attribuita alla coalizione di
+  # liste ovvero al gruppo di liste non riunito in coalizione con cui il
+  # Presidente della Giunta regionale eletto ha dichiarato collegamento sommando
+  # le cifre elettorali circoscrizionali attribuite alle singole liste
+  # circoscrizionali che ne fanno parte;
   
   # TODO continua
   

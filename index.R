@@ -526,11 +526,13 @@ simula <- function(
     #   "LISTA",
     #   "VOTI_LISTA_ITER"
     # )]
-    
+    # 
     # liste <- liste[, c(
     #   "COALIZIONE",
     #   "LISTA"
     # )]
+    
+    # save(liste, prov_lista, province, file = "dati_per_scrutinio.RData")
     
     scrutinio <- Scrutinio(
       prov_lista[, c(
