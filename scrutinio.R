@@ -419,10 +419,7 @@ Scrutinio <- function(
     bonus_vinti <- 0
   }
   
-  liste$SEGGI_BONUS[liste$CLASSIFICA == 1] <- Hare.Niemeyer(
-    liste$VOTI_UTILI[liste$CLASSIFICA == 1],
-    bonus_vincitori
-  )
+  
   
   sr <- Hare.Niemeyer(
     liste$VOTI_UTILI[liste$CLASSIFICA != 1],
@@ -517,6 +514,11 @@ Scrutinio <- function(
     }
     
   }
+  
+  liste$SEGGI_BONUS[liste$CLASSIFICA == 1] <- Hare.Niemeyer(
+    liste$VOTI_UTILI[liste$CLASSIFICA == 1],
+    bonus_vincitori
+  )
   
   # 3. L'ufficio centrale regionale proclama eletto alla carica di consigliere
   # il candidato alla carica di Presidente della Giunta regionale che ha
