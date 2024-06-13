@@ -387,7 +387,13 @@ prov_lista_elezione <- merge(
 
 prov_lista_elezione$VOTI_LISTA <- prov_lista_elezione$VOTI_LISTA * prov_lista_elezione$FATTORE
 
-#### Calcolo distribuzione spaziale elettori di area ####
+prov_lista_elezione <- aggregate(
+  VOTI_LISTA ~ PROVINCIA + ELEZIONE + LISTA,
+  prov_lista_elezione,
+  sum
+)
+
+#### Calcolo variabilità ####
 
 prov_lista_elezione <- merge(
   prov_lista_elezione,
@@ -405,113 +411,22 @@ prov_lista_elezione$PERCENTUALE <-
 
 prov_lista_elezione$LOG_P <- log(prov_lista_elezione$PERCENTUALE)
 
-lista_elezione <- aggregate(
-  VOTI_LISTA ~ LISTA + ELEZIONE,
-  prov_lista_elezione,
-  sum
-)
-
-lista_elezione <- merge(
-  lista_elezione,
-  aggregate(
-    VOTI_LISTA ~ ELEZIONE,
-    lista_elezione,
-    sum
-  ),
-  by = "ELEZIONE",
-  suffixes = c("", "_TOT")
-)
-
-lista_elezione$PERCENTUALE <-
-  lista_elezione$VOTI_LISTA / lista_elezione$VOTI_LISTA_TOT
-
-lista_elezione$LOG_P <- log(lista_elezione$PERCENTUALE)
-
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  lista_elezione[, c("LISTA", "ELEZIONE", "LOG_P")],
-  by = c("LISTA", "ELEZIONE"),
-  suffixes = c("", "_ELEZIONE")
-)
-
-prov_lista_elezione$DELTA_LOG_P <-
-  prov_lista_elezione$LOG_P - prov_lista_elezione$LOG_P_ELEZIONE
-
-
 prov_lista <- aggregate(
-  VOTI_LISTA ~ PROVINCIA + LISTA,
+  LOG_P ~ PROVINCIA + LISTA,
   prov_lista_elezione,
-  sum
+  sd
 )
 
-prov_lista <- merge(
-  prov_lista,
-  aggregate(
-    VOTI_LISTA ~ PROVINCIA,
-    prov_lista,
-    sum
-  ),
-  by = "PROVINCIA",
-  suffixes = c("", "_TOT")
-)
-
-prov_lista$PERCENTUALE_STORICA <- prov_lista$VOTI_LISTA / prov_lista$VOTI_LISTA_TOT
-
-prov_lista$LOG_P <- log(prov_lista$PERCENTUALE_STORICA)
-
-prov_lista <- merge(
-  prov_lista,
-  province
-)
-
-prov_lista$POP_LISTA <- prov_lista$PERCENTUALE_STORICA * prov_lista$POP_2011
+prov_lista$LOG_P[is.na(prov_lista$LOG_P)] <- mean(prov_lista$LOG_P, na.rm = TRUE)
 
 liste <- aggregate(
-  POP_LISTA ~ LISTA,
+  LOG_P ~ LISTA,
   prov_lista,
-  sum
+  mean
 )
 
+names(liste)[names(liste) == "LOG_P"] <- "variab"
 
-popolazione <- sum(liste$POP_LISTA)
-
-liste$PERCENTUALE_STORICA <- liste$POP_LISTA / popolazione
-liste$LOG_P <- log(liste$PERCENTUALE_STORICA)
-
-
-prov_lista <- merge(
-  prov_lista,
-  liste,
-  by = "LISTA",
-  suffixes = c("", "_TOT")
-)
-
-prov_lista$PERCENTUALE_LISTA <- prov_lista$POP_LISTA / prov_lista$POP_LISTA_TOT
-
-prov_lista$DELTA_LOG_P <-
-  prov_lista$LOG_P - prov_lista$LOG_P_TOT
-
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  prov_lista[, c("PROVINCIA", "LISTA", "DELTA_LOG_P")],
-  by = c("PROVINCIA", "LISTA"),
-  suffixes = c("", "_GLOBALE")
-)
-
-prov_lista_elezione$DELTA2_LOG_P <-
-  prov_lista_elezione$DELTA_LOG_P - prov_lista_elezione$DELTA_LOG_P_GLOBALE
-
-variab <- sd(prov_lista_elezione$DELTA2_LOG_P)
-
-# Pulizia
-rm(corrispondenza_liste, dati, lista_elezione, prov_lista_elezione, liste)
-
-prov_lista <- prov_lista[, c(
-  "PROVINCIA",
-  "LISTA",
-  "POP_2011",
-  "PERCENTUALE_LISTA"
-)]
 
 ```
 
@@ -521,28 +436,43 @@ prov_lista <- prov_lista[, c(
 
 ##### Carico liste regionali #####
 
-liste <- read_xlsx("dati/liste.xlsx")
+liste_coal <- read_xlsx("dati/liste.xlsx")
 
-liste$PERCENTUALE_CORRETTA <- liste$PERCENTUALE
-liste$PERCENTUALE_CORRETTA[liste$LISTA != "astensione"] <-
-  liste$PERCENTUALE[liste$LISTA != "astensione"] * 
-  ( 1 - liste$PERCENTUALE[liste$LISTA == "astensione"])
+stopifnot(setequal(liste$LISTA, c(liste_coal$LISTA, "astensione")))
 
-# stopifnot(sum(liste$PERCENTUALE_CORRETTA) == 1)
-stopifnot(setequal(liste$LISTA, unique(prov_lista$LISTA)))
+liste <- merge(liste, liste_coal, all.x = TRUE)
 
+prov_lista <- read_xlsx("dati/liste.xlsx", "europee")
 
-liste$LOG_P <- log(liste$PERCENTUALE_CORRETTA)
+stopifnot(setequal(liste$LISTA, c(unique(prov_lista$LISTA), "astensione")))
 
-# pulizia
+prov_lista <- merge(
+  prov_lista,
+  read_xlsx("dati/popolazione.xlsx")
+)
 
-liste <- liste[, c(
-  "COALIZIONE",
-  "LISTA",
-  "LOG_P",
-  "COLORE",
-  "PERCENTUALE"
-)]
+astensione <- aggregate(
+  VOTI_LISTA ~
+    PROVINCIA +
+    ELETTORI,
+  prov_lista,
+  sum
+)
+
+astensione$VOTI_LISTA <- astensione$ELETTORI - astensione$VOTI_LISTA
+
+astensione$LISTA <- "astensione"
+prov_lista <- rbind(
+  prov_lista,
+  astensione
+)
+
+prov_lista$LOG_P_BASE <- log(prov_lista$VOTI_LISTA / prov_lista$ELETTORI)
+
+prov_lista <- merge(
+  prov_lista,
+  liste[, c("LISTA", "variab")]
+)
 
 ```
 
@@ -558,39 +488,13 @@ simula <- function(
     iter = 1,
     liste,
     prov_lista,
-    popolazione,
-    variab,
     province
   ) {
-    #### Simulazione percentuali regionali ####
-    
-    liste$LOG_P_ITER <- rnorm(
-      liste$LOG_P,
-      liste$LOG_P,
-      0.25
-    )
-    
-    liste$PERCENTUALE <- exp(liste$LOG_P_ITER) / sum(exp(liste$LOG_P_ITER))
-    
-    liste$VOTANTI <- liste$PERCENTUALE * popolazione
-    
-    #### Calcolo percentuali per provincia ####
-    
-    prov_lista <- merge(
-      prov_lista,
-      liste[,c("LISTA", "VOTANTI")]
-    )
-    
-    prov_lista$VOTANTI_LOCALI <- prov_lista$VOTANTI * prov_lista$PERCENTUALE_LISTA
-    
-    prov_lista$PERCENTUALE_BASE <- prov_lista$VOTANTI_LOCALI / prov_lista$POP_2011
-    
-    prov_lista$LOG_P_BASE <- log(prov_lista$PERCENTUALE_BASE)
-    
+    #### Simulazione percentuali per provincia ####
     prov_lista$LOG_P_ITER <- rnorm(
       prov_lista$LOG_P_BASE,
       prov_lista$LOG_P_BASE,
-      variab
+      prov_lista$variab
     )
     
     prov_lista$PERCENTUALE_ITER <- ave(
@@ -599,21 +503,8 @@ simula <- function(
       FUN = function(x) exp(x) / sum(exp(x))
     )
     
-    # TODO sostituire la popolazione con gli elettori
-    prov_lista$VOTI_LISTA_ITER <- prov_lista$POP_2011 * prov_lista$PERCENTUALE_ITER
     
-    # prov_lista <- prov_lista[, c(
-    #   "PROVINCIA",
-    #   "LISTA",
-    #   "VOTI_LISTA_ITER"
-    # )]
-    # 
-    # liste <- liste[, c(
-    #   "COALIZIONE",
-    #   "LISTA"
-    # )]
-    
-    # save(liste, prov_lista, province, file = "dati_per_scrutinio.RData")
+    prov_lista$VOTI_LISTA_ITER <- prov_lista$ELETTORI * prov_lista$PERCENTUALE_ITER
     
     scrutinio <- Scrutinio(
       prov_lista[, c(
@@ -709,8 +600,6 @@ simula <- function(
     iterazione,
     liste = liste,
     prov_lista = prov_lista,
-    popolazione = popolazione,
-    variab = variab,
     province = province
   )
   
@@ -736,16 +625,7 @@ risultato <- simula(1000)
 
 ## Dati di input
 
-```{r dati_input}
-liste$PERCENTUALE <- formattable::percent(liste$PERCENTUALE, 1)
-
-kbl(
-    liste[, c("COALIZIONE", "LISTA", "PERCENTUALE")],
-    caption = "Dati di input"
-  ) %>%
-    kable_minimal()
-
-```
+Voti delle elezioni europee
 
 ## Risultati
 
@@ -764,6 +644,38 @@ risultato$coalizioni <- merge(
 
 
 ```
+
+### Risultati per partito
+
+```{r ris_per_partito}
+risultato$liste$PERCENTUALE <- formattable::percent(risultato$liste$PERCENTUALE, 2)
+par(mar=c(4, 12, 0.1, 0.1))
+
+boxplot(
+  PERCENTUALE * 100 ~ LISTA, 
+  data = risultato$liste, 
+  horizontal = TRUE, 
+  las=1,
+  xlab = "PERCENTUALE",
+  ylab = NA,
+  col = liste$COLORE[order(liste$LISTA)]
+  )
+
+
+```
+
+### Coalizioni vincenti
+
+```{r vincenti}
+aggregate(
+  PRESIDENTE ~ COALIZIONE,
+  risultato$coalizioni,
+  mean
+)
+
+
+```
+
 
 ### Composizione mediana del Consiglio Regionale
 
@@ -955,7 +867,7 @@ grafico_nmax <- function(lista, provincia = NA) {
   )
 }
 
-grafico_nmax("AVS")
+grafico_nmax("ALLEANZA VERDI E SINISTRA")
 
 ```
 
@@ -964,6 +876,6 @@ grafico_nmax("AVS")
 #| fig-height: 8
 #| dpi: 100
 
-grafico_nmax("AVS", "PARMA")
+grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 
 ```
