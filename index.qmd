@@ -246,7 +246,7 @@ importa_dati <- function() {
   
   ##### Unisco i dati #####
   
-  dati_precedenti <- rbindlist(
+  comuni_liste_elezioni <- rbindlist(
     lapply(
       list(
         amministrative,
@@ -265,6 +265,7 @@ importa_dati <- function() {
       )]
     )
   )
+  
   
   ###### Calcolo astensione ######
   
@@ -287,28 +288,70 @@ importa_dati <- function() {
     astensione
   }
   
-  dati_precedenti <- rbind(
-    dati_precedenti,
-    calcola_astensione(dati_precedenti)
+  comuni_liste_elezioni <- rbind(
+    comuni_liste_elezioni,
+    calcola_astensione(comuni_liste_elezioni)
+  )
+  
+  province_liste_elezioni <- aggregate(
+    VOTI_LISTA ~
+      REGIONE +
+      PROVINCIA +
+      LISTA +
+      ELEZIONE,
+    comuni_liste_elezioni,
+    sum
   )
   
   ##### Filtro (solo Emilia-Romagna) #####
   
-  dati_precedenti <- dati_precedenti[dati_precedenti$REGIONE == "EMILIA-ROMAGNA"]
+  dati_precedenti <- province_liste_elezioni[province_liste_elezioni$REGIONE == "EMILIA-ROMAGNA", ]
   province <- province[province$PROVINCIA %in% dati_precedenti$PROVINCIA, ]
+  
+  ##### Dati Europee 2024 ####
+  # Workaround finché non arriveranno gli open data
+  
+  e24_prov_liste <- read_xlsx("dati/liste.xlsx", "europee")
+  
+  e24_prov_liste$REGIONE = "EMILIA_ROMAGNA"
+  e24_prov_liste$ELEZIONE = "europee2024"
+  
+  e24_prov <- aggregate(
+    VOTI_LISTA ~
+      REGIONE +
+      PROVINCIA +
+      ELEZIONE,
+    e24_prov_liste,
+    sum
+  )
+  
+  e24_prov <- merge(
+    e24_prov,
+    read_xlsx("dati/popolazione.xlsx")
+  )
+  
+  e24_prov$VOTI_LISTA <- e24_prov$ELETTORI - e24_prov$VOTI_LISTA
+  e24_prov$LISTA <- "astensione"
+  e24_prov$ELETTORI <- NULL
+  
+  dati_precedenti <- rbind(
+    dati_precedenti,
+    e24_prov_liste,
+    e24_prov
+  )
   
   return(list(province = province, dati_precedenti = dati_precedenti))
 }
 
 dati <- importa_dati()
 
-dati_precedenti <- dati$dati_precedenti
+prov_lista_elezione <- dati$dati_precedenti
 province <- dati$province
 
 
 # Questo è servito per esportare i nomi delle liste
 write.csv2(
-  dati$dati_precedenti[!duplicated(dati$dati_precedenti$LISTA), ],
+  dati$prov_lista_elezione[!duplicated(dati$prov_lista_elezione$LISTA), ],
   "_output/liste_precedenti_elezioni.csv",
   fileEncoding = "utf-8"
 )
@@ -332,25 +375,19 @@ corrispondenza_liste <- corrispondenza_liste[corrispondenza_liste$FATTORE > 0, ]
 
 # Unisco questa ai dati precedenti, e calcolo i voti per le nuove liste
 
-names(dati_precedenti)[names(dati_precedenti) == "LISTA"] <- "LISTA_ORIGINALE"
+names(prov_lista_elezione)[names(prov_lista_elezione) == "LISTA"] <- "LISTA_ORIGINALE"
 
 corrispondenza_liste$ELEZIONE <- NULL
 
-dati_precedenti <- merge(
-  dati_precedenti,
+prov_lista_elezione <- merge(
+  prov_lista_elezione,
   corrispondenza_liste,
   allow.cartesian = TRUE
 )
 
-dati_precedenti$VOTI_LISTA <- dati_precedenti$VOTI_LISTA * dati_precedenti$FATTORE
+prov_lista_elezione$VOTI_LISTA <- prov_lista_elezione$VOTI_LISTA * prov_lista_elezione$FATTORE
 
 #### Calcolo distribuzione spaziale elettori di area ####
-
-prov_lista_elezione <- aggregate(
-  VOTI_LISTA ~ PROVINCIA + LISTA + ELEZIONE,
-  dati_precedenti,
-  sum
-)
 
 prov_lista_elezione <- merge(
   prov_lista_elezione,
@@ -403,7 +440,7 @@ prov_lista_elezione$DELTA_LOG_P <-
 
 prov_lista <- aggregate(
   VOTI_LISTA ~ PROVINCIA + LISTA,
-  dati_precedenti,
+  prov_lista_elezione,
   sum
 )
 
@@ -467,7 +504,7 @@ prov_lista_elezione$DELTA2_LOG_P <-
 variab <- sd(prov_lista_elezione$DELTA2_LOG_P)
 
 # Pulizia
-rm(corrispondenza_liste, dati, dati_precedenti, lista_elezione, prov_lista_elezione, liste)
+rm(corrispondenza_liste, dati, lista_elezione, prov_lista_elezione, liste)
 
 prov_lista <- prov_lista[, c(
   "PROVINCIA",
@@ -918,7 +955,7 @@ grafico_nmax <- function(lista, provincia = NA) {
   )
 }
 
-grafico_nmax("EUROPA VERDE")
+grafico_nmax("AVS")
 
 ```
 
@@ -927,6 +964,6 @@ grafico_nmax("EUROPA VERDE")
 #| fig-height: 8
 #| dpi: 100
 
-grafico_nmax("EUROPA VERDE", "PARMA")
+grafico_nmax("AVS", "PARMA")
 
 ```
