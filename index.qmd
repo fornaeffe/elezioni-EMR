@@ -9,9 +9,17 @@ format:
 
 Questo report contiene i risultati di una simulazione delle prossime elezioni
 del Consiglio della Regione Emilia-Romagna, ottenuti
-partendo dai risultati delle precedenti elezioni. Da
-questi vengono simulati i possibili voti presi da ciascuna lista in ciascuna provincia, e dai voti vengono poi calcolati il numero di eletti per ciascuna
-lista.
+partendo dai risultati delle elezioni europee 2024.
+Vengono eseguite 1000 simulazioni, in ciascuna di esse le percentuali che ciascuna
+lista ha preso alle elezioni europee in ciascuna provincia 
+vengono aumentate o diminuite casualmente, in modo che la variabilità dei
+risultati ottenuti sia la stessa che è stata registrata nelle passate elezioni
+per quella lista. Ad esempio, se il PD in passato è oscillato tra il 25% e il 35%,
+le percentuali del PD simulate oscilleranno tra 5 punti percentuali in più
+e 5 punti percentuali in meno rispetto a quelle delle europee.
+
+Per le liste che non erano presenti nelle passate elezioni la variabilità
+è stata calcolata partendo dalle liste più affini.
 
 Avverto che ho fatto questa simulazione per curiosità e non per lavoro, e che
 potrebbero essermi sfuggiti degli errori nel processo di
@@ -623,10 +631,6 @@ risultato <- simula(1000)
 
 ```
 
-## Dati di input
-
-Voti delle elezioni europee
-
 ## Risultati
 
 ```{r prep_grafici}
@@ -637,28 +641,32 @@ risultato$liste <- merge(
   liste[, c("LISTA", "COLORE")]
 )
 
+coalizioni <- liste[!duplicated(liste$COALIZIONE), c("COALIZIONE", "COLORE")]
+
 risultato$coalizioni <- merge(
   risultato$coalizioni,
-  liste[!duplicated(liste$COALIZIONE), c("COALIZIONE", "COLORE")]
+  coalizioni
 )
+
+risultato$liste$PERCENTUALE <- formattable::percent(risultato$liste$PERCENTUALE, 2)
 
 
 ```
 
-### Risultati per partito
+### Percentuali per lista
 
 ```{r ris_per_partito}
-risultato$liste$PERCENTUALE <- formattable::percent(risultato$liste$PERCENTUALE, 2)
+
 par(mar=c(4, 12, 0.1, 0.1))
 
 boxplot(
   PERCENTUALE * 100 ~ LISTA, 
-  data = risultato$liste, 
+  data = droplevels(risultato$liste[risultato$liste$COLORE != "#DDDDDD"]), 
   horizontal = TRUE, 
   las=1,
   xlab = "PERCENTUALE",
   ylab = NA,
-  col = liste$COLORE[order(liste$LISTA)]
+  col = liste$COLORE
   )
 
 
@@ -667,48 +675,63 @@ boxplot(
 ### Coalizioni vincenti
 
 ```{r vincenti}
-aggregate(
-  PRESIDENTE ~ COALIZIONE,
-  risultato$coalizioni,
-  mean
-)
+
+vittoria <- aggregate(
+      PRESIDENTE ~ COALIZIONE,
+      risultato$coalizioni,
+      mean
+    )
+
+vittoria$PRESIDENTE <- formattable::percent(vittoria$PRESIDENTE, 0)
+
+
+kbl(
+    vittoria[vittoria$PRESIDENTE > 0,],
+    col.names = c("COALIZIONE", "Prob."),
+    caption = "Prob. di vittoria"
+  ) %>%
+    kable_minimal()
 
 
 ```
 
 
-### Composizione mediana del Consiglio Regionale
+### Composizione media del Consiglio Regionale
 
 ```{r plot_parlamento}
 library(ggplot2)
 library(ggpol)
+source("scrutinio.R")
 
 disegna_parlamento <- function() {
   
   eletti <- aggregate(
     ELETTI ~ LISTA + COLORE + COALIZIONE,
     risultato$liste,
-    median
+    mean
   )
-  eletti$SEGGI <- eletti$ELETTI
+  eletti$SEGGI <- Hare.Niemeyer(eletti$ELETTI, 48)
   eletti$Gruppo <- eletti$LISTA
   eletti <- eletti[order(eletti$COALIZIONE), ]
   
   pres <- aggregate(
     PRESIDENTE ~ COALIZIONE + COLORE,
     risultato$coalizioni,
-    median
+    mean
   )
-  
-  pres$SEGGI <- pres$PRESIDENTE
+  pres$SEGGI <- 0
+  pres$SEGGI[order(pres$PRESIDENTE, decreasing = TRUE)[1]] <- 1
   pres$Gruppo <- paste("Pres.", pres$COALIZIONE)
+  pres$COLORE <- 
+    adjustcolor(pres$COLORE, alpha.f = 0.5)
   
   miglior_perdente <- aggregate(
     MIGLIOR_PERDENTE ~ COALIZIONE + COLORE,
     risultato$coalizioni,
-    median
+    mean
   )
-  miglior_perdente$SEGGI <- miglior_perdente$MIGLIOR_PERDENTE
+  miglior_perdente$SEGGI <- 0
+  miglior_perdente$SEGGI[order(miglior_perdente$MIGLIOR_PERDENTE, decreasing = TRUE)[1]] <- 1
   miglior_perdente$Gruppo <- paste("Cand. pres.", miglior_perdente$COALIZIONE)
   miglior_perdente$COLORE <- 
     adjustcolor(miglior_perdente$COLORE, alpha.f = 0.5)
@@ -720,8 +743,6 @@ disegna_parlamento <- function() {
     eletti[, c("Gruppo", "SEGGI", "COLORE")]
   )
   
-  # Evito seggi con valore di 0.5
-  parlamento$SEGGI <- ceiling(parlamento$SEGGI)
   
   parlamento <- parlamento[parlamento$SEGGI > 0, ]
   
@@ -740,7 +761,7 @@ disegna_parlamento()
 
 ```
 
-### Probabilità di eleggere qualcuno
+### Probabilità di superare lo sbarramento
 
 ```{r}
 superamento_soglia <- function() {
@@ -750,6 +771,7 @@ superamento_soglia <- function() {
     risultato$liste,
     function(x) mean(x > 0)
   )
+  soglie <- soglie[soglie$LISTA %in% liste$LISTA[liste$COLORE != "#DDDDDD"],]
   soglie$SOGLIA <- formattable::percent(soglie$ELETTI, 0)
   kbl(
     soglie[, c("LISTA", "SOGLIA")],
@@ -762,6 +784,37 @@ superamento_soglia <- function() {
 superamento_soglia()
 
 ```
+
+### Numero di seggi rispetto alle percentuali ottenute
+```{r}
+#| fig.width: 8
+#| fig-height: 8
+#| dpi: 100
+par(mar = c(5, 4, 0, 0))
+plot(ELETTI ~ PERCENTUALE, data = risultato$liste, col = COLORE)
+legend(
+  "bottomright", 
+  legend = liste$LISTA[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD"], 
+  col = liste$COLORE[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD"],
+  pch = 1
+)
+
+```
+
+```{r}
+#| fig.width: 8
+#| fig-height: 8
+#| dpi: 100
+par(mar = c(5, 4, 0, 0))
+plot(ELETTI ~ PERCENTUALE, data = risultato$coalizioni, col = COLORE)
+legend(
+  "bottomright", 
+  legend = coalizioni$COALIZIONE[coalizioni$COLORE != "#DDDDDD"], 
+  col = coalizioni$COLORE[coalizioni$COLORE != "#DDDDDD"],
+  pch = 1
+)
+```
+
 
 ### Probabilità di elezione per ciascuna posizione nelle province
 
@@ -805,21 +858,14 @@ disegna_tabella_prob <- function(lista) {
 }
 
 
-for (lista in liste$LISTA[liste$LISTA != "astensione"]) {
+for (lista in liste$LISTA[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD"]) {
   print(disegna_tabella_prob(lista))
 }
 
 ```
 
-```{r}
-#| fig.width: 8
-#| fig-height: 0.5
-#| dpi: 100
 
-par(mar = c(0,4,2,2))
-plot(NA, xlim = c(0,1), ylim = c(0,1), axes=FALSE, xlab="", ylab="",
-     main = "Probabilità di elezione in base alla posizione nel listino")
-```
+### Probabilità di elezione in base alla posizione nel listino
 
 
 ```{r plot_nmax}
