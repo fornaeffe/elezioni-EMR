@@ -421,7 +421,6 @@ date_elezioni <- sapply(elezioni, function(x) {
 })
 
 df_elezioni <- data.frame(ELEZIONE = elezioni, DATA = as.POSIXct(date_elezioni))
-df_elezioni$ordine <- rank(df_elezioni$DATA)
 
 
 prov_lista_elezione <- merge(
@@ -467,25 +466,8 @@ lista_elezione$LOG_P <- log(lista_elezione$PERCENTUALE)
 
 lista_elezione <- merge(
   lista_elezione,
-  df_elezioni[, c("ELEZIONE", "ordine")]
+  df_elezioni[, c("ELEZIONE", "DATA")]
 )
-
-# lista_elezione <- merge(
-#   lista_elezione,
-#   df_elezioni[, c("ELEZIONE", "DATA")]
-# )
-# 
-# lista_elezione <- lista_elezione[order(lista_elezione$ordine),]
-# plot(PERCENTUALE ~ DATA, data = lista_elezione, pch = "")
-# tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-#   lines(PERCENTUALE ~ DATA, data = df)
-# })
-# 
-# 
-# plot(LOG_P ~ DATA, data = lista_elezione, pch = "")
-# tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-#   lines(LOG_P ~ DATA, data = df)
-# })
 
 
 ```
@@ -493,7 +475,7 @@ lista_elezione <- merge(
 
 ```{r sigma}
 SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  ts <- zoo(df$LOG_P, df$ordine)
+  ts <- zoo(df$LOG_P, df$DATA)
   return(sd(diff(ts)))
 })
 
@@ -514,12 +496,12 @@ prov_lista_elezione$DELTA <-
 
 prov_lista_elezione <- merge(
   prov_lista_elezione,
-  df_elezioni[, c("ELEZIONE", "ordine")]
+  df_elezioni[, c("ELEZIONE", "DATA")]
 )
 
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
-    ts <- zoo(df$DELTA, df$ordine)
+    ts <- zoo(df$DELTA, df$DATA)
     return(diff(ts))
   })))
 })
@@ -1016,3 +998,17 @@ grafico_nmax <- function(lista, provincia = NA) {
 grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 
 ```
+
+# Approfondimenti
+
+## Serie storica dei risultati delle liste
+
+```{r}
+lista_elezione <- merge(
+  lista_elezione,
+  liste[, c("LISTA", "COLORE")]
+)
+
+
+```
+
