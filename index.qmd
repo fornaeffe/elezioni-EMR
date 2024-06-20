@@ -437,7 +437,7 @@ prov_lista_elezione <- merge(
 prov_lista_elezione$PERCENTUALE <-
   prov_lista_elezione$VOTI_LISTA / prov_lista_elezione$VOTI_LISTA_PROV
 
-prov_lista_elezione$LOG_P <- log(prov_lista_elezione$PERCENTUALE)
+prov_lista_elezione$LOG_P <- qlogis(prov_lista_elezione$PERCENTUALE)
 
 
 lista_elezione <- aggregate(
@@ -460,7 +460,7 @@ lista_elezione <- merge(
 lista_elezione$PERCENTUALE <- 
   lista_elezione$VOTI_LISTA / lista_elezione$VOTI_LISTA_REG
 
-lista_elezione$LOG_P <- log(lista_elezione$PERCENTUALE)
+lista_elezione$LOG_P <- qlogis(lista_elezione$PERCENTUALE)
 
 
 
@@ -590,7 +590,7 @@ simula <- function(
     prov_lista$PERCENTUALE_ITER <- ave(
       prov_lista$LOG_P_ITER,
       prov_lista$PROVINCIA,
-      FUN = function(x) exp(x) / sum(exp(x))
+      FUN = function(x) plogis(x) / sum(plogis(x))
     )
     
     
@@ -1046,9 +1046,16 @@ plot(
   log = "y"
 )
 tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE)
+  lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE, lwd = 2)
 })
-
+legend(
+  "bottomleft", 
+  inset=c(0,-0.6), 
+  legend=liste$LISTA, 
+  lwd = 2, 
+  col = liste$COLORE,
+  ncol = 2
+)
 
 ```
 ```{r controllo varianza}
