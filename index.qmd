@@ -406,7 +406,7 @@ prov_lista_elezione <- aggregate(
 ```
 
 
-```{r variabilità}
+```{r serie storica}
 #### Calcolo variabilità ####
 
 elezioni <- unique(prov_lista_elezione$ELEZIONE)
@@ -464,12 +464,35 @@ lista_elezione$PERCENTUALE <-
 
 lista_elezione$LOG_P <- log(lista_elezione$PERCENTUALE)
 
+
+
 lista_elezione <- merge(
   lista_elezione,
   df_elezioni[, c("ELEZIONE", "ordine")]
 )
 
+# lista_elezione <- merge(
+#   lista_elezione,
+#   df_elezioni[, c("ELEZIONE", "DATA")]
+# )
+# 
+# lista_elezione <- lista_elezione[order(lista_elezione$ordine),]
+# plot(PERCENTUALE ~ DATA, data = lista_elezione, pch = "")
+# tapply(lista_elezione, lista_elezione$LISTA, function(df) {
+#   lines(PERCENTUALE ~ DATA, data = df)
+# })
+# 
+# 
+# plot(LOG_P ~ DATA, data = lista_elezione, pch = "")
+# tapply(lista_elezione, lista_elezione$LISTA, function(df) {
+#   lines(LOG_P ~ DATA, data = df)
+# })
 
+
+```
+
+
+```{r sigma}
 SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
   ts <- zoo(df$LOG_P, df$ordine)
   return(sd(diff(ts)))
@@ -511,6 +534,9 @@ liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 
 # CAP!
 liste$SIGMA_R[liste$SIGMA_R > 1] <- 1
+
+# Scale
+liste$SIGMA_R <- liste$SIGMA_R / 2
 
 ```
 
