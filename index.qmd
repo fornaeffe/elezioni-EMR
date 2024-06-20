@@ -40,6 +40,8 @@ library(parallel)
 library(kableExtra)
 library(zoo)
 
+data_elezione <- as.POSIXct("2024-10-27")
+
 ```
 
 ```{r distribuzione voti}
@@ -476,7 +478,7 @@ lista_elezione <- merge(
 ```{r sigma}
 SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
   ts <- zoo(df$LOG_P, df$DATA)
-  return(sd(diff(ts)))
+  return(sd(unclass(diff(ts)) / unclass(diff(df$DATA))))
 })
 
 liste <- data.frame(
@@ -502,7 +504,7 @@ prov_lista_elezione <- merge(
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
     ts <- zoo(df$DELTA, df$DATA)
-    return(diff(ts))
+    return(unclass(diff(ts)) / unclass(diff(df$DATA)))
   })))
 })
 
@@ -514,10 +516,10 @@ liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
 liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 
 # CAP!
-liste$SIGMA_R[liste$SIGMA_R > 1] <- 1
+# liste$SIGMA_R[liste$SIGMA_R > 1] <- 1
 
 # Scale
-liste$SIGMA_R <- liste$SIGMA_R / 2
+# liste$SIGMA_R <- liste$SIGMA_R / 2
 
 ```
 
@@ -554,6 +556,8 @@ prov_lista <- merge(
 #| include: false
 #| cache: true
 
+delta_t <- data_elezione - max(df_elezioni$DATA)
+
 simula <- function(
     iterazioni = 200
 ) {
@@ -562,13 +566,14 @@ simula <- function(
     iter = 1,
     liste,
     prov_lista,
-    province
+    province,
+    delta_t
   ) {
     #### Simulazione percentuali regionali ####
     liste$LOG_P_ITER <- rnorm(
       liste$LOG_P,
       liste$LOG_P,
-      liste$SIGMA_R
+      liste$SIGMA_R * delta_t
     )
     
     #### Simulazione percentuali per provincia ####
@@ -582,7 +587,7 @@ simula <- function(
     prov_lista$DELTA_ITER <- rnorm(
       prov_lista$DELTA,
       prov_lista$DELTA,
-      prov_lista$SIGMA_P
+      prov_lista$SIGMA_P * delta_t
     )
     
     prov_lista$LOG_P_ITER <- prov_lista$LOG_P_ITER_R + prov_lista$DELTA_ITER
@@ -690,7 +695,8 @@ simula <- function(
     iterazione,
     liste = liste,
     prov_lista = prov_lista,
-    province = province
+    province = province,
+    delta_t = delta_t
   )
   
   stopCluster(cl)
@@ -1086,9 +1092,34 @@ liste <- merge(
 )
 
 barplot(
-  t(as.matrix(cbind(liste$SIGMA_R, liste$SIGMA_R_POSTERIORI))),
+  t(as.matrix(cbind(liste$SIGMA_R * delta_t, liste$SIGMA_R_POSTERIORI))),
   beside = TRUE
 )
+
+```
+
+```{r regressione differenze}
+differenze <- rbindlist(tapply(
+  lista_elezione,
+  lista_elezione$LISTA,
+  function(df) {
+    df <- df[order(df$DATA),]
+    return(
+      data.frame(
+        DIFFERENZA = diff(df$LOG_P),
+        DELTA_T = diff(df$DATA)
+      )
+    )
+    
+  }
+), idcol = "LISTA")
+
+modello_differenze <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
+
+summary(modello_differenze)
+
+plot(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
+abline(modello_differenze)
 
 ```
 
