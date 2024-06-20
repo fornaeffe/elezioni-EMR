@@ -407,7 +407,6 @@ prov_lista_elezione <- aggregate(
 
 
 ```{r serie storica}
-#### Calcolo variabilità ####
 
 elezioni <- unique(prov_lista_elezione$ELEZIONE)
 
@@ -767,7 +766,7 @@ boxplot(
   las=1,
   xlab = "PERCENTUALE",
   ylab = NA,
-  col = liste$COLORE
+  col = liste$COLORE[liste$COLORE != "#DDDDDD"]
   )
 
 
@@ -862,7 +861,7 @@ disegna_parlamento()
 
 ```
 
-### Probabilità di superare lo sbarramento
+### Probabilità di eleggere qualcuno
 
 ```{r}
 superamento_soglia <- function() {
@@ -1013,15 +1012,6 @@ grafico_nmax <- function(lista, provincia = NA) {
     title = "Posizione"
   )
 }
-
-grafico_nmax("ALLEANZA VERDI E SINISTRA")
-
-```
-
-```{r}
-#| fig.width: 8
-#| fig-height: 8
-#| dpi: 100
 
 grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 
