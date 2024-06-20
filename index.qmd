@@ -515,11 +515,6 @@ liste$SIGMA_P <- SIGMA_P
 liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
 liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 
-# CAP!
-# liste$SIGMA_R[liste$SIGMA_R > 1] <- 1
-
-# Scale
-# liste$SIGMA_R <- liste$SIGMA_R / 2
 
 ```
 
@@ -719,8 +714,6 @@ risultato <- simula(1000)
 
 ```
 
-## Risultati
-
 ```{r prep_grafici}
 liste$COLORE[is.na(liste$COLORE)] <- "#DDDDDD"
 
@@ -741,7 +734,45 @@ risultato$liste$PERCENTUALE <- formattable::percent(risultato$liste$PERCENTUALE,
 
 ```
 
+## Dati
+
+```{r}
+kbl(
+    liste[liste$LISTA != "astensione", c("COALIZIONE", "LISTA")],
+    col.names = c("COALIZIONE", "LISTA"),
+    caption = "Liste",
+    row.names = FALSE
+  ) %>%
+    kable_minimal() %>%
+    column_spec(
+      1,
+      color = "black",
+      background = adjustcolor(
+        coalizioni$COLORE[match(liste$COALIZIONE[liste$LISTA != "astensione"], coalizioni$COALIZIONE)],
+        alpha.f = 0.5
+      )
+        
+    ) %>%
+    column_spec(
+      2,
+      color = "black",
+      background = adjustcolor(
+        liste$COLORE[liste$LISTA != "astensione"],
+        alpha.f = 0.5
+      )   
+    )
+```
+
+
+
+## Risultati
+
+
+
 ### Percentuali per lista
+
+Questo grafico mostra le percentuali (sui voti validi) simulate per ciascuna 
+lista.
 
 ```{r ris_per_partito}
 
@@ -752,9 +783,10 @@ boxplot(
   data = droplevels(risultato$liste[risultato$liste$COLORE != "#DDDDDD"]), 
   horizontal = TRUE, 
   las=1,
-  xlab = "PERCENTUALE",
+  xlab = "Percentuale sui voti validi",
   ylab = NA,
-  col = liste$COLORE[liste$COLORE != "#DDDDDD"]
+  col = liste$COLORE[liste$COLORE != "#DDDDDD"],
+  cex.axis = 0.8
   )
 
 
@@ -776,7 +808,8 @@ vittoria$PRESIDENTE <- formattable::percent(vittoria$PRESIDENTE, 0)
 kbl(
     vittoria[vittoria$PRESIDENTE > 0,],
     col.names = c("COALIZIONE", "Prob."),
-    caption = "Prob. di vittoria"
+    caption = "Probabilità di vittoria",
+    row.names = FALSE
   ) %>%
     kable_minimal()
 
@@ -787,6 +820,9 @@ kbl(
 ### Composizione media del Consiglio Regionale
 
 ```{r plot_parlamento}
+#| warning: false 
+
+
 library(ggplot2)
 library(ggpol)
 source("scrutinio.R")
@@ -875,26 +911,34 @@ superamento_soglia()
 
 ### Numero di seggi rispetto alle percentuali ottenute
 ```{r}
-#| fig.width: 8
-#| fig-height: 8
-#| dpi: 100
-par(mar = c(5, 4, 0, 0))
-plot(ELETTI ~ PERCENTUALE, data = risultato$liste, col = COLORE)
-legend(
-  "bottomright", 
-  legend = liste$LISTA[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD"], 
-  col = liste$COLORE[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD"],
-  pch = 1
+#| results: hide
+
+
+tapply(
+  risultato$liste,
+  risultato$liste$LISTA,
+  function(df) {
+    plot(
+      ELETTI ~ I(PERCENTUALE*100),
+      data = df,
+      col = COLORE,
+      xlab = "Percentuale sui voti validi",
+      main = df$LISTA[1]
+    )
+  }
 )
 
-```
 
+```
+#### Per coalizione
 ```{r}
-#| fig.width: 8
-#| fig-height: 8
-#| dpi: 100
 par(mar = c(5, 4, 0, 0))
-plot(ELETTI ~ PERCENTUALE, data = risultato$coalizioni, col = COLORE)
+plot(
+  ELETTI ~ I(PERCENTUALE*100), 
+  data = risultato$coalizioni, 
+  col = COLORE,
+  xlab = "Percentuale sui voti validi"
+)
 legend(
   "bottomright", 
   legend = coalizioni$COALIZIONE[coalizioni$COLORE != "#DDDDDD"], 
@@ -1013,6 +1057,9 @@ grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 #| fig.width: 8
 #| fig-height: 8
 #| dpi: 100
+#| results: hide
+
+
 lista_elezione <- merge(
   lista_elezione,
   liste[, c("LISTA", "COLORE")]
