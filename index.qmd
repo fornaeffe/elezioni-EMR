@@ -38,6 +38,7 @@ library(stringr)
 library(readxl)
 library(parallel)
 library(kableExtra)
+library(zoo)
 
 ```
 
@@ -355,8 +356,10 @@ dati <- importa_dati()
 
 prov_lista_elezione <- dati$dati_precedenti
 province <- dati$province
+```
 
 
+```{r corrispondenza}
 # Questo è servito per esportare i nomi delle liste
 write.csv2(
   dati$prov_lista_elezione[!duplicated(dati$prov_lista_elezione$LISTA), ],
@@ -400,8 +403,27 @@ prov_lista_elezione <- aggregate(
   prov_lista_elezione,
   sum
 )
+```
 
+
+```{r variabilità}
 #### Calcolo variabilità ####
+
+elezioni <- unique(prov_lista_elezione$ELEZIONE)
+
+date_elezioni <- sapply(elezioni, function(x) {
+  if (x == "camera_2018") return(as.POSIXct("2018-03-04"))
+  
+  if (x == "camera_2022") return(as.POSIXct("2022-09-25"))
+  
+  if (x == "europee2024") return(as.POSIXct("2024-06-09"))
+  
+  return(as.POSIXct(substr(x, nchar(x)-11, nchar(x)-4), format = "%Y%m%d"))
+})
+
+df_elezioni <- data.frame(ELEZIONE = elezioni, DATA = as.POSIXct(date_elezioni))
+df_elezioni$ordine <- rank(df_elezioni$DATA)
+
 
 prov_lista_elezione <- merge(
   prov_lista_elezione,
@@ -419,22 +441,76 @@ prov_lista_elezione$PERCENTUALE <-
 
 prov_lista_elezione$LOG_P <- log(prov_lista_elezione$PERCENTUALE)
 
-prov_lista <- aggregate(
-  LOG_P ~ PROVINCIA + LISTA,
+
+lista_elezione <- aggregate(
+  VOTI_LISTA ~ LISTA + ELEZIONE,
   prov_lista_elezione,
-  sd
+  sum
 )
 
-prov_lista$LOG_P[is.na(prov_lista$LOG_P)] <- mean(prov_lista$LOG_P, na.rm = TRUE)
-
-liste <- aggregate(
-  LOG_P ~ LISTA,
-  prov_lista,
-  mean
+lista_elezione <- merge(
+  lista_elezione,
+  aggregate(
+    VOTI_LISTA ~ ELEZIONE,
+    lista_elezione,
+    sum
+  ),
+  by = "ELEZIONE",
+  suffixes = c("", "_REG")
 )
 
-names(liste)[names(liste) == "LOG_P"] <- "variab"
+lista_elezione$PERCENTUALE <- 
+  lista_elezione$VOTI_LISTA / lista_elezione$VOTI_LISTA_REG
 
+lista_elezione$LOG_P <- log(lista_elezione$PERCENTUALE)
+
+lista_elezione <- merge(
+  lista_elezione,
+  df_elezioni[, c("ELEZIONE", "ordine")]
+)
+
+
+SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
+  ts <- zoo(df$LOG_P, df$ordine)
+  return(sd(diff(ts)))
+})
+
+liste <- data.frame(
+  LISTA = names(SIGMA_R),
+  SIGMA_R = SIGMA_R
+)
+
+prov_lista_elezione <- merge(
+  prov_lista_elezione,
+  lista_elezione[, c("LISTA", "ELEZIONE", "LOG_P")],
+  by = c("LISTA", "ELEZIONE"),
+  suffixes = c("", "_REG")
+)
+
+prov_lista_elezione$DELTA <- 
+  prov_lista_elezione$LOG_P - prov_lista_elezione$LOG_P_REG
+
+prov_lista_elezione <- merge(
+  prov_lista_elezione,
+  df_elezioni[, c("ELEZIONE", "ordine")]
+)
+
+SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
+  sd(unlist(tapply(df, df$PROVINCIA, function(df) {
+    ts <- zoo(df$DELTA, df$ordine)
+    return(diff(ts))
+  })))
+})
+
+stopifnot(all.equal(names(SIGMA_P), liste$LISTA))
+
+liste$SIGMA_P <- SIGMA_P
+
+liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
+liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
+
+# CAP!
+liste$SIGMA_R[liste$SIGMA_R > 1] <- 1
 
 ```
 
@@ -450,36 +526,19 @@ stopifnot(setequal(liste$LISTA, c(liste_coal$LISTA, "astensione")))
 
 liste <- merge(liste, liste_coal, all.x = TRUE)
 
-prov_lista <- read_xlsx("dati/liste.xlsx", "europee")
+liste <- merge(
+  liste,
+  lista_elezione[lista_elezione$ELEZIONE == "europee2024", c("LISTA", "LOG_P")]
+)
 
-stopifnot(setequal(liste$LISTA, c(unique(prov_lista$LISTA), "astensione")))
+prov_lista <- prov_lista_elezione[
+  prov_lista_elezione$ELEZIONE == "europee2024",
+  c("LISTA", "PROVINCIA", "DELTA", "VOTI_LISTA_PROV")
+]
 
 prov_lista <- merge(
   prov_lista,
-  read_xlsx("dati/popolazione.xlsx")
-)
-
-astensione <- aggregate(
-  VOTI_LISTA ~
-    PROVINCIA +
-    ELETTORI,
-  prov_lista,
-  sum
-)
-
-astensione$VOTI_LISTA <- astensione$ELETTORI - astensione$VOTI_LISTA
-
-astensione$LISTA <- "astensione"
-prov_lista <- rbind(
-  prov_lista,
-  astensione
-)
-
-prov_lista$LOG_P_BASE <- log(prov_lista$VOTI_LISTA / prov_lista$ELETTORI)
-
-prov_lista <- merge(
-  prov_lista,
-  liste[, c("LISTA", "variab")]
+  liste[, c("LISTA", "SIGMA_P")]
 )
 
 ```
@@ -498,12 +557,28 @@ simula <- function(
     prov_lista,
     province
   ) {
-    #### Simulazione percentuali per provincia ####
-    prov_lista$LOG_P_ITER <- rnorm(
-      prov_lista$LOG_P_BASE,
-      prov_lista$LOG_P_BASE,
-      prov_lista$variab
+    #### Simulazione percentuali regionali ####
+    liste$LOG_P_ITER <- rnorm(
+      liste$LOG_P,
+      liste$LOG_P,
+      liste$SIGMA_R
     )
+    
+    #### Simulazione percentuali per provincia ####
+    prov_lista <- merge(
+      prov_lista,
+      liste[, c("LISTA", "LOG_P_ITER")]
+    )
+    
+    names(prov_lista)[names(prov_lista) == "LOG_P_ITER"] <- "LOG_P_ITER_R"
+    
+    prov_lista$DELTA_ITER <- rnorm(
+      prov_lista$DELTA,
+      prov_lista$DELTA,
+      prov_lista$SIGMA_P
+    )
+    
+    prov_lista$LOG_P_ITER <- prov_lista$LOG_P_ITER_R + prov_lista$DELTA_ITER
     
     prov_lista$PERCENTUALE_ITER <- ave(
       prov_lista$LOG_P_ITER,
@@ -512,7 +587,7 @@ simula <- function(
     )
     
     
-    prov_lista$VOTI_LISTA_ITER <- prov_lista$ELETTORI * prov_lista$PERCENTUALE_ITER
+    prov_lista$VOTI_LISTA_ITER <- prov_lista$VOTI_LISTA_PROV * prov_lista$PERCENTUALE_ITER
     
     scrutinio <- Scrutinio(
       prov_lista[, c(
