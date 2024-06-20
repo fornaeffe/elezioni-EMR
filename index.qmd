@@ -1004,11 +1004,84 @@ grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 ## Serie storica dei risultati delle liste
 
 ```{r}
+#| fig.width: 8
+#| fig-height: 8
+#| dpi: 100
 lista_elezione <- merge(
   lista_elezione,
   liste[, c("LISTA", "COLORE")]
 )
 
+# Ordino secondo la data 
+lista_elezione <- lista_elezione[order(lista_elezione$DATA),]
+
+par(mar=c(15.1, 4.1, 4.1, 2.1), xpd=TRUE)
+
+# Grafico dell'andamento della percentuale in base alla data
+plot(
+  PERCENTUALE * 100 ~ DATA, 
+  data = lista_elezione, 
+  pch = "",
+  ylab = "PERCENTUALE"
+)
+tapply(lista_elezione, lista_elezione$LISTA, function(df) {
+  lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE, lwd = 2)
+})
+legend(
+  "bottomleft", 
+  inset=c(0,-0.6), 
+  legend=liste$LISTA, 
+  lwd = 2, 
+  col = liste$COLORE,
+  ncol = 2
+)
+
+
+# Grafico dell'andamento del logaritmo della percentuale in base alla data
+plot(
+  PERCENTUALE * 100 ~ DATA, 
+  data = lista_elezione, 
+  pch = "",
+  ylab = "PERCENTUALE",
+  log = "y"
+)
+tapply(lista_elezione, lista_elezione$LISTA, function(df) {
+  lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE)
+})
+
+
+```
+```{r controllo varianza}
+popolazione <- read_xlsx("dati/popolazione.xlsx")
+
+risultato$liste$PERCENTUALE_ELETTORI <- risultato$liste$VOTI_LISTA_ITER / sum(popolazione$ELETTORI)
+
+par(mar=c(4, 12, 0.1, 0.1))
+boxplot(
+  PERCENTUALE_ELETTORI ~ LISTA, 
+  data = risultato$liste,
+  horizontal = TRUE,
+  las=1,
+  xlab = "Percentuale sugli elettori",
+  ylab = NA,
+  col = liste$COLORE[liste$LISTA != "astensione"],
+  cex.axis = 0.8
+)
+
+
+SIGMA_R_POSTERIORI <- tapply(log(risultato$liste$PERCENTUALE_ELETTORI), risultato$liste$LISTA, sd)
+
+liste <- merge(
+  liste,
+  data.frame(SIGMA_R_POSTERIORI = SIGMA_R_POSTERIORI),
+  by.x = "LISTA", by.y = "row.names",
+  all.x = TRUE
+)
+
+barplot(
+  t(as.matrix(cbind(liste$SIGMA_R, liste$SIGMA_R_POSTERIORI))),
+  beside = TRUE
+)
 
 ```
 
