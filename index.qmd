@@ -12,14 +12,9 @@ del Consiglio della Regione Emilia-Romagna, ottenuti
 partendo dai risultati delle elezioni europee 2024.
 Vengono eseguite 1000 simulazioni, in ciascuna di esse le percentuali che ciascuna
 lista ha preso alle elezioni europee in ciascuna provincia 
-vengono aumentate o diminuite casualmente, in modo che la variabilità dei
-risultati ottenuti sia la stessa che è stata registrata nelle passate elezioni
-per quella lista. Ad esempio, se il PD in passato è oscillato tra il 25% e il 35%,
-le percentuali del PD simulate oscilleranno tra 5 punti percentuali in più
-e 5 punti percentuali in meno rispetto a quelle delle europee.
-
-Per le liste che non erano presenti nelle passate elezioni la variabilità
-è stata calcolata partendo dalle liste più affini.
+vengono aumentate o diminuite casualmente di una quantità che sia coerente
+con la variabilità che ha avuto nel passato la percentuale di quella lista.
+Per i dettagli vedere in fondo negli approfondimenti.
 
 Avverto che ho fatto questa simulazione per curiosità e non per lavoro, e che
 potrebbero essermi sfuggiti degli errori nel processo di
@@ -771,7 +766,7 @@ kbl(
 
 ### Percentuali per lista
 
-Questo grafico mostra le percentuali (sui voti validi) simulate per ciascuna 
+Questo grafico mostra le percentuali simulate per ciascuna 
 lista.
 
 ```{r ris_per_partito}
@@ -900,7 +895,8 @@ superamento_soglia <- function() {
   kbl(
     soglie[, c("LISTA", "SOGLIA")],
     col.names = c("LISTA", "Prob."),
-    caption = "Prob. di eleggere qualcuno"
+    caption = "Prob. di eleggere qualcuno",
+    row.names = FALSE
   ) %>%
     kable_minimal()
 }
@@ -1050,6 +1046,81 @@ grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 ```
 
 # Approfondimenti
+
+Il numero di voti ricevuti da ciascuna lista alle prossime regionali è stato
+simulato in questo modo:
+
+1. ho considerato le ultime cinque elezioni (tra regionali, europee e 
+politiche) svolte in Emilia-Romagna;
+2. per ciascuna elezione (a parte la prima) ho calcolato di quanto è cambiata la
+percentuale di ciascuna lista rispetto all'elezione precedente;
+3. ho diviso questo cambiamento per il tempo trascorso tra le due elezioni, per
+ottenere una "velocità" di cambiamento della percentuale della lista;
+4. ho preso le percentuali ottenute da ciascuna lista alle ultime elezioni
+europee e ho aumentato (o diminuito) casualmente la percentuale in modo che
+la velocità di cambiamento del voto sia compresa nella distribuzione delle
+velocità di cambiamento osservate in passato per la stessa lista.
+
+Più in dettaglio, per simulare la variabilità a livello regionale:
+
+1. alle percentuali rispetto agli elettori di ciascuna lista,
+in ciascuna elezione passata, compresa l'astensione, ho applicato una 
+trasformazione logit per evitare che i valori fossero confinati tra 0 e 1;
+2. ho calcolato la velocità di cambiamento dei valori così trasformati tra 
+un'elezione e l'altra;
+3. per ciascuna lista ho calcolato la deviazione standard di queste velocità;
+4. partendo dalle percentuali ottenute alle elezioni europee, anch'esse
+trasformate, le ho aumentate o diminuite scegliendo una velocità casuale da una 
+distribuzione normale con la deviazione standard calcolata al punto precedente,
+e moltiplicando questa velocità per il tempo (ipotetico) tra le europee e la 
+prossima elezione regionale.
+
+In pratica, per ciascuna lista:
+
+$$ {\tt logit}^{-1}(P_t) = {\tt logit}^{-1}(P_{t-1}) + (data_t - data_{t-1})
+\cdot {\sf N}(0, \sigma_R)$$
+
+Dove 
+
+* $P_t$ è la percentuale della lista alle prossime elezioni regionali
+(percentuale teorica, perché in realtà quella pratica sarà leggermente diversa
+a causa della simulazione della variabilità provinciale, descritta dopo),
+* $P_{t-1}$ è la percentuale della lista alle elezioni europee del 2024,
+* $data_t$ e $data_{t-1}$ sono le date delle due elezioni,
+* $\sigma_R$ è la deviazione standard delle velocità di cambiamento della
+percentuale (logit-trasformata) della stessa lista tra le passate elezioni.
+
+Per simulare la variabilità a livello provinciale:
+
+1. per ciascuna lista, ciascuna elezione e ciascuna provincia ho calcolato la 
+differenza tra la percentuale nella provincia e la percentuale regionale 
+(logit-trasformate), ho chiamato questa differenza $\delta$;
+2. ho calcolato la velocità di cambiamento di questa $\delta$ tra ogni
+elezione e la sua successiva;
+3. per ogni lista ho calcolato la deviazione standard di queste velocità;
+4. partendo dai $\delta$ delle elezioni europee, li ho aumentati o diminuiti
+di una velocità estratta a caso da una distribuzione normale con la deviazione
+standard calcolata al punto precedente, moltiplicata per il tempo che passerà
+tra le ultime europee e le prossime regionali;
+5. ho aggiunto questo $\delta$ così calcolato al ${\tt logit}^{-1}(P_t)$
+calcolato a livello regionale per ottenere la percentuale a livello provinciale
+
+In pratica, per la lista $l$ nella provincia $p$ e nell'elezione $t$:
+
+$${\tt logit}^{-1}(\tilde{p}_{l, p, t}) = {\tt logit}^{-1}(P_{l, t}) + \delta_{l, p, t}t$$
+
+$$\delta_{l, p, t} = \delta_{l, p, t-1} + (data_t - data_{t-1}) \cdot {\sf N}(0, \sigma_{P,l})$$
+Dove:
+
+* $\tilde{p}_{l, p, t}$ è la percentuale della lista $l$ nella provincia $p$
+nelle elezioni $t$
+* $\sigma_{P,l}$ è la deviazione standard della distribuzione delle velocità di 
+cambiamento dei $\delta_t$ per la lista $l$.
+
+Le percentuali provinciali così ottenute vengono poi scalate in modo che la 
+somma di tutte le percentuali della provincia faccia 1:
+
+$$p_{l, p, t} = \frac{\tilde{p}_{l, p, t}}{\displaystyle{\sum_{l \in Liste } \tilde{p}_{l, p, t}}}$$
 
 ## Serie storica dei risultati delle liste
 
