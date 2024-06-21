@@ -1047,82 +1047,114 @@ grafico_nmax("ALLEANZA VERDI E SINISTRA", "PARMA")
 
 # Approfondimenti
 
-Il numero di voti ricevuti da ciascuna lista alle prossime regionali è stato
-simulato in questo modo:
+Per predire il numero di voti che ciascuna lista prenderà alle prossime
+elezioni regionali in ciascuna provincia ho ipotizzato che i voti presi da
+ciascuna lista seguano il modello che descrivo qui di seguito.
 
-1. ho considerato le ultime cinque elezioni (tra regionali, europee e 
-politiche) svolte in Emilia-Romagna;
-2. per ciascuna elezione (a parte la prima) ho calcolato di quanto è cambiata la
-percentuale di ciascuna lista rispetto all'elezione precedente;
-3. ho diviso questo cambiamento per il tempo trascorso tra le due elezioni, per
-ottenere una "velocità" di cambiamento della percentuale della lista;
-4. ho preso le percentuali ottenute da ciascuna lista alle ultime elezioni
-europee e ho aumentato (o diminuito) casualmente la percentuale in modo che
-la velocità di cambiamento del voto sia compresa nella distribuzione delle
-velocità di cambiamento osservate in passato per la stessa lista.
+Ho ipotizzato che la percentuale regionale (sul totale degli elettori) della 
+lista $l$ nell'elezione $t$ (trasformata attraverso la funzione 
+$\operatorname{logit}^{-1}$ affinché non sia vincolata tra 0 e 1) sia uguale alla 
+percentuale regionale della stessa lista nell'elezione precedente ($t-1$) 
+(anch'essa trasformata tramite $\operatorname{logit}^{-1}$), più una quantità 
+(positiva o negativa) che dipende dal tempo trascorso tra le due elezioni e da 
+una "velocità" di cambiamento casuale, con una distribuzione normale e una 
+deviazione standard che può variare da lista a lista (ci saranno liste più 
+stabili, le cui velocità di cambiamento saranno vicine allo zero, e liste meno
+stabili con velocità di cambiamento che possono discostarsi maggiormente dallo 
+zero).
 
-Più in dettaglio, per simulare la variabilità a livello regionale:
+$$ \operatorname{logit}^{-1}(P_{l,t}) = \operatorname{logit}^{-1}(P_{l,t-1}) 
++ (data_t - data_{t-1}) \cdot v_{R, l, t} $$
 
-1. alle percentuali rispetto agli elettori di ciascuna lista,
-in ciascuna elezione passata, compresa l'astensione, ho applicato una 
-trasformazione logit per evitare che i valori fossero confinati tra 0 e 1;
-2. ho calcolato la velocità di cambiamento dei valori così trasformati tra 
-un'elezione e l'altra;
-3. per ciascuna lista ho calcolato la deviazione standard di queste velocità;
-4. partendo dalle percentuali ottenute alle elezioni europee, anch'esse
-trasformate, le ho aumentate o diminuite scegliendo una velocità casuale da una 
-distribuzione normale con la deviazione standard calcolata al punto precedente,
-e moltiplicando questa velocità per il tempo (ipotetico) tra le europee e la 
-prossima elezione regionale.
-
-In pratica, per ciascuna lista:
-
-$$ {\tt logit}^{-1}(P_t) = {\tt logit}^{-1}(P_{t-1}) + (data_t - data_{t-1})
-\cdot {\sf N}(0, \sigma_R)$$
+$$ v_{R, l, t} \sim \mathcal{N}(0, \sigma_{R,l})$$
 
 Dove 
 
-* $P_t$ è la percentuale della lista alle prossime elezioni regionali
-(percentuale teorica, perché in realtà quella pratica sarà leggermente diversa
-a causa della simulazione della variabilità provinciale, descritta dopo),
-* $P_{t-1}$ è la percentuale della lista alle elezioni europee del 2024,
+* $P_{l,t}$ è la percentuale regionale (sul totale degli aventi diritto al voto)
+della lista $l$ all'elezione $t$,
+* $P_{t-1}$ è la percentuale della lista $l$ all'elezione precedente ($t-1$),
 * $data_t$ e $data_{t-1}$ sono le date delle due elezioni,
-* $\sigma_R$ è la deviazione standard delle velocità di cambiamento della
-percentuale (logit-trasformata) della stessa lista tra le passate elezioni.
+* $v_{R, l, t}$ è la velocità di cambiamento della percentuale trasformata
+regionale della lista $l$ tra l'elezione $t-1$ e l'elezione $t$
+* $\sigma_{R,l}$ è la deviazione standard delle velocità di cambiamento della
+percentuale (logit-trasformata) della lista $l$.
 
-Per simulare la variabilità a livello provinciale:
+Ipotizzo poi che, per ciascuna provincia $p$, la percentuale provinciale 
+$p_{l,p,t}$ della lista $l$ sul totale degli aventi diritto al voto 
+(sempre trasformata tramite $\operatorname{logit}^{-1}$) sia uguale alla 
+percentuale regionale $P_{l,t}$ (trasformata) della stessa lista, più (o meno) 
+una differenza $\delta_{l,p,t}$ specifica per la provincia:
 
-1. per ciascuna lista, ciascuna elezione e ciascuna provincia ho calcolato la 
-differenza tra la percentuale nella provincia e la percentuale regionale 
-(logit-trasformate), ho chiamato questa differenza $\delta$;
-2. ho calcolato la velocità di cambiamento di questa $\delta$ tra ogni
-elezione e la sua successiva;
-3. per ogni lista ho calcolato la deviazione standard di queste velocità;
-4. partendo dai $\delta$ delle elezioni europee, li ho aumentati o diminuiti
-di una velocità estratta a caso da una distribuzione normale con la deviazione
-standard calcolata al punto precedente, moltiplicata per il tempo che passerà
-tra le ultime europee e le prossime regionali;
-5. ho aggiunto questo $\delta$ così calcolato al ${\tt logit}^{-1}(P_t)$
-calcolato a livello regionale per ottenere la percentuale a livello provinciale
+$$\operatorname{logit}^{-1}(p_{l,p,t}) = \operatorname{logit}^{-1}(P_{l,t}) +
+\delta_{l,p,t}$$
 
-In pratica, per la lista $l$ nella provincia $p$ e nell'elezione $t$:
+Ipotizzo infine che questa differenza possa cambiare tra un'elezione e l'altra
+di una quantità che dipende dal tempo trascorso e da una "velocità" casuale
+con una distribuzione normale e una deviazione standard $\sigma_{P, l}$
+specifica per la lista:
 
-$${\tt logit}^{-1}(\tilde{p}_{l, p, t}) = {\tt logit}^{-1}(P_{l, t}) + \delta_{l, p, t}t$$
+$$
+\delta_{l, p, t} = \delta_{l, p, t-1} + (data_t - data_{t-1}) \cdot 
+v_{p, l, t}
+$$
 
-$$\delta_{l, p, t} = \delta_{l, p, t-1} + (data_t - data_{t-1}) \cdot {\sf N}(0, \sigma_{P,l})$$
-Dove:
 
-* $\tilde{p}_{l, p, t}$ è la percentuale della lista $l$ nella provincia $p$
-nelle elezioni $t$
+$$v_{p, l, t} \sim \mathcal{N}(0, \sigma_{P,l})$$
+
+Dove 
+
+* $v_{p, l, t}$ è la velocità di cambiamento di $\delta_{l,p,t}$ 
+tra l'elezione $t-1$ e l'elezione $t$ nella provincia $p$,
 * $\sigma_{P,l}$ è la deviazione standard della distribuzione delle velocità di 
-cambiamento dei $\delta_t$ per la lista $l$.
+cambiamento $v_{p, l, t}$.
+
+In tutti questi casi considero l'astensione come una lista a sé.
+
+
+Dai dati sulle elezioni precedenti ottengo quindi:
+
+* per ciascuna lista $l$, la deviazione standard $\sigma_{R,l}$ delle velocità
+di cambiamento delle percentuali regionali trasformate;
+* per ciascuna lista $l$, la deviaizone standard $\sigma_{P,l}$ delle velocità
+di cambiamento delle differenze tra ciascuna provincia e la regione;
+* per ciascuna lista $l$, la percentuale regionale trasformata 
+$\operatorname{logit}^{-1}(P_{l,europee\ 2024})$ ottenuta alle ultime elezioni;
+* per ciascuna lista $l$ e ciascuna provincia $p$, la differenza 
+$\delta_{l,p,europee\ 2024}$ tra la percentuale trasformata provinciale e
+regionale alle ultime elezioni.
+
+
+Per fare una simulazione dei voti delle prossime elezioni, quindi:
+
+1. calcolo il tempo che trascorrerà tra le elezioni europee e una probabile 
+data delle prossime elezioni regionali
+2. estraggo a sorte, per ciascuna lista $l$, le velocità di cambiamento
+$v_{R, l, regionali\ 2024}$ delle percentuali regionali;
+3. attraverso le equazioni sopra, calcolo le nuove percentuali regionali;
+4. estraggo a sorte, per ciascuna lista $l$ e provincia $p$, le velocità di 
+cambiamento $v_{p, l, regionali\ 2024}$ delle differenze provinciali;
+5. attraverso le equazioni sopra, calcolo le nuove differenze provinciali e a 
+seguire le nuove percentuali provinciali.
 
 Le percentuali provinciali così ottenute vengono poi scalate in modo che la 
 somma di tutte le percentuali della provincia faccia 1:
 
-$$p_{l, p, t} = \frac{\tilde{p}_{l, p, t}}{\displaystyle{\sum_{l \in Liste } \tilde{p}_{l, p, t}}}$$
+$$\hat{p}_{l, p, regionali\ 2024} = \frac{p_{l, p, regionali\ 2024}}
+{\displaystyle{\sum_{l \in Liste } p_{l, p,  regionali\ 2024}}}$$
+
+dove $\hat{p}_{l,p, regionali\ 2024}$ è la percentuale scalata della lista $l$
+nella provincia $p$, simulata per le prossime elezioni regionali.
+
+Quest'ultima percentuale viene poi moltiplicata per gli elettori, per ottenere
+il numero di voti ricevuti da ciascuna lista in ciascuna provincia.
+
+Con questi voti viene poi simulato uno scrutinio, seguendo quanto stabilito
+dalla legge elettorale regionale.
 
 ## Serie storica dei risultati delle liste
+
+Di seguito la serie storica di elezioni considerate. Sono mostrate le
+percentuali di ciascuna lista 
 
 ```{r}
 #| fig.width: 8
