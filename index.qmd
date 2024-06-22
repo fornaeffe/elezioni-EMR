@@ -400,6 +400,22 @@ prov_lista_elezione <- aggregate(
   prov_lista_elezione,
   sum
 )
+
+prov_lista_elezione$LISTA <- as.factor(prov_lista_elezione$LISTA)
+```
+
+```{r}
+# Carico le liste
+liste <- read_xlsx("dati/liste.xlsx")
+liste <- rbind(
+  liste,
+  data.frame(
+    COALIZIONE = NA,
+    LISTA = "astensione",
+    COLORE = NA
+  )
+)
+liste$LISTA <- factor(liste$LISTA, levels(prov_lista_elezione$LISTA))
 ```
 
 
@@ -471,15 +487,47 @@ lista_elezione <- merge(
 
 
 ```{r sigma}
-SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  ts <- zoo(df$LOG_P, df$DATA)
-  return(sd(unclass(diff(ts)) / unclass(diff(df$DATA))))
-})
 
-liste <- data.frame(
-  LISTA = names(SIGMA_R),
-  SIGMA_R = SIGMA_R
-)
+differenze <- rbindlist(tapply(
+  lista_elezione,
+  lista_elezione$LISTA,
+  function(df) {
+    df <- df[order(df$DATA),]
+    return(
+      data.frame(
+        DIFFERENZA = diff(df$LOG_P),
+        DELTA_T = diff(df$DATA)
+      )
+    )
+    
+  }
+), idcol = "LISTA")
+
+differenze$LISTA <- factor(differenze$LISTA, levels(liste$LISTA))
+
+md_1 <- lm(abs(DIFFERENZA) ~ 1, data = differenze)
+md_1_T <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
+md_T <- lm(abs(DIFFERENZA) ~ DELTA_T - 1, data = differenze)
+md_L <- lm(abs(DIFFERENZA) ~ LISTA - 1, data = differenze)
+md_L_T <- lm(abs(DIFFERENZA) ~ LISTA + DELTA_T - 1, data = differenze)
+md_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T - 1, data = differenze)
+md_1_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T, data = differenze)
+md_L_LT <- lm(abs(DIFFERENZA) ~ LISTA + LISTA : DELTA_T - 1, data = differenze)
+
+AIC(md_1)
+AIC(md_1_T)
+AIC(md_T)
+AIC(md_L)
+AIC(md_L_T)
+AIC(md_LT)
+AIC(md_1_LT)
+AIC(md_L_LT)
+
+liste$SIGMA0 <- md_L_LT$coefficients[1:nrow(liste)]
+liste$SIGMA0[is.na(liste$SIGMA0)] <- mean(liste$SIGMA0, na.rm = TRUE)
+
+liste$v <- md_L_LT$coefficients[(nrow(liste)+1):(2*nrow(liste))]
+liste$v[is.na(liste$v)] <- mean(liste$v, na.rm = TRUE)
 
 prov_lista_elezione <- merge(
   prov_lista_elezione,
@@ -496,19 +544,51 @@ prov_lista_elezione <- merge(
   df_elezioni[, c("ELEZIONE", "DATA")]
 )
 
-SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
-  sd(unlist(tapply(df, df$PROVINCIA, function(df) {
-    ts <- zoo(df$DELTA, df$DATA)
-    return(unclass(diff(ts)) / unclass(diff(df$DATA)))
-  })))
-})
+differenzeP <- rbindlist(tapply(
+  prov_lista_elezione,
+  prov_lista_elezione$LISTA,
+  function(df) {
+    rbindlist(tapply(
+      df,
+      df$PROVINCIA,
+        function(df) {
+          df <- df[order(df$DATA),]
+          return(
+            data.frame(
+              DIFFERENZA = diff(df$DELTA),
+              DELTA_T = diff(df$DATA)
+            )
+          )
+    
+        }
+    ), idcol = "PROVINCIA")
+  }
+  
+  
+), idcol = "LISTA")
 
-stopifnot(all.equal(names(SIGMA_P), liste$LISTA))
+differenzeP$LISTA <- factor(differenzeP$LISTA, levels(liste$LISTA))
 
-liste$SIGMA_P <- SIGMA_P
+mdp_1 <- lm(abs(DIFFERENZA) ~ 1, data = differenzeP)
+mdp_1_T <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenzeP)
+mdp_T <- lm(abs(DIFFERENZA) ~ DELTA_T - 1, data = differenzeP)
+mdp_L <- lm(abs(DIFFERENZA) ~ LISTA -1, data = differenzeP)
+mdp_L_T <- lm(abs(DIFFERENZA) ~ LISTA + DELTA_T -1, data = differenzeP)
+mdp_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T -1, data = differenzeP)
+mdp_1_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T, data = differenzeP)
+mdp_L_LT <- lm(abs(DIFFERENZA) ~ LISTA + LISTA : DELTA_T -1, data = differenzeP)
 
-liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
-liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
+AIC(mdp_1)
+AIC(mdp_1_T)
+AIC(mdp_T)
+AIC(mdp_L)
+AIC(mdp_L_T)
+AIC(mdp_LT)
+AIC(mdp_1_LT)
+AIC(mdp_L_LT)
+
+
+liste$SIGMAP <- mdp_L$coefficients
 
 
 ```
@@ -517,13 +597,6 @@ liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 #| include: false
 #| cache: true
 
-##### Carico liste regionali #####
-
-liste_coal <- read_xlsx("dati/liste.xlsx")
-
-stopifnot(setequal(liste$LISTA, c(liste_coal$LISTA, "astensione")))
-
-liste <- merge(liste, liste_coal, all.x = TRUE)
 
 liste <- merge(
   liste,
@@ -537,7 +610,7 @@ prov_lista <- prov_lista_elezione[
 
 prov_lista <- merge(
   prov_lista,
-  liste[, c("LISTA", "SIGMA_P")]
+  liste[, c("LISTA", "SIGMAP")]
 )
 
 ```
@@ -563,7 +636,7 @@ simula <- function(
     liste$LOG_P_ITER <- rnorm(
       liste$LOG_P,
       liste$LOG_P,
-      liste$SIGMA_R * delta_t
+      abs(liste$SIGMA0 + liste$v * delta_t)
     )
     
     #### Simulazione percentuali per provincia ####
@@ -577,7 +650,7 @@ simula <- function(
     prov_lista$DELTA_ITER <- rnorm(
       prov_lista$DELTA,
       prov_lista$DELTA,
-      prov_lista$SIGMA_P * delta_t
+      prov_lista$SIGMAP
     )
     
     prov_lista$LOG_P_ITER <- prov_lista$LOG_P_ITER_R + prov_lista$DELTA_ITER
@@ -1232,17 +1305,21 @@ boxplot(
 )
 
 
-SIGMA_R_POSTERIORI <- tapply(log(risultato$liste$PERCENTUALE_ELETTORI), risultato$liste$LISTA, sd)
+SIGMA_R_PRIORI <- tapply(lista_elezione$LOG_P, lista_elezione$LISTA, sd)
+SIGMA_R_POSTERIORI <- tapply(qlogis(risultato$liste$PERCENTUALE_ELETTORI), risultato$liste$LISTA, sd)
 
 liste <- merge(
   liste,
-  data.frame(SIGMA_R_POSTERIORI = SIGMA_R_POSTERIORI),
+  data.frame(
+    SIGMA_R_POSTERIORI = SIGMA_R_POSTERIORI,
+    SIGMA_R_PRIORI = SIGMA_R_PRIORI
+  ),
   by.x = "LISTA", by.y = "row.names",
   all.x = TRUE
 )
 
 barplot(
-  t(as.matrix(cbind(liste$SIGMA_R * delta_t, liste$SIGMA_R_POSTERIORI))),
+  t(as.matrix(cbind(liste$SIGMA_R_PRIORI, liste$SIGMA_R_POSTERIORI))),
   beside = TRUE
 )
 
