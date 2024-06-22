@@ -34,6 +34,7 @@ library(readxl)
 library(parallel)
 library(kableExtra)
 library(zoo)
+library(rstan)
 
 data_elezione <- as.POSIXct("2024-10-27")
 
@@ -400,6 +401,8 @@ prov_lista_elezione <- aggregate(
   prov_lista_elezione,
   sum
 )
+
+prov_lista_elezione$LISTA <- as.factor(prov_lista_elezione$LISTA)
 ```
 
 
@@ -469,6 +472,79 @@ lista_elezione <- merge(
 
 ```
 
+```{r}
+
+# Carico le liste
+liste <- read_xlsx("dati/liste.xlsx")
+liste <- rbind(
+  liste,
+  data.frame(
+    COALIZIONE = NA,
+    LISTA = "astensione",
+    COLORE = NA
+  )
+)
+
+liste$LISTA <- factor(liste$LISTA, levels(prov_lista_elezione$LISTA))
+
+```
+
+
+```{r stan}
+
+# Calcolo le differenze
+differenze <- rbindlist(tapply(
+  lista_elezione,
+  lista_elezione$LISTA,
+  function(df) {
+    df <- df[order(df$DATA),]
+    return(
+      data.frame(
+        DIFFERENZA = diff(df$LOG_P),
+        DELTA_T = diff(df$DATA)
+      )
+    )
+    
+  }
+), idcol = "LISTA")
+
+differenze$LISTA <- factor(differenze$LISTA, levels(liste$LISTA))
+
+delta_t <- data_elezione - max(df_elezioni$DATA)
+
+lista_elezione <- lista_elezione[order(lista_elezione$LISTA),]
+
+dati <- list(
+  L = nrow(liste),
+  NR = nrow(differenze),
+  diffR = differenze$DIFFERENZA,
+  tempo = as.numeric(differenze$DELTA_T) / 365.25,
+  lista = as.numeric(differenze$LISTA),
+  lPR = lista_elezione$LOG_P[lista_elezione$ELEZIONE == "europee2024"],
+  tempo_prox = as.numeric(delta_t) / 365.25
+)
+
+options(mc.cores = parallel::detectCores())
+
+fit <- stan(
+  "modello.stan",
+  data = dati
+)
+
+summary(fit)
+
+fit_ext <- extract(fit)
+
+boxplot(plogis(fit_ext$lPR_new), horizontal = TRUE)
+plot(density(plogis(fit_ext$lPR_new[,1])))
+
+apply(plogis(fit_ext$lPR_new),2,mean)
+
+percentuali <- apply(plogis(fit_ext$lPR_new), 1, function(riga) riga[1:12] / sum(riga[1:12]))
+apply(percentuali,1,median)
+```
+
+
 
 ```{r sigma}
 SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
@@ -499,7 +575,7 @@ prov_lista_elezione <- merge(
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
     ts <- zoo(df$DELTA, df$DATA)
-    return(unclass(diff(ts)) / unclass(diff(df$DATA)))
+    return(diff(ts))
   })))
 })
 
@@ -546,7 +622,7 @@ prov_lista <- merge(
 #| include: false
 #| cache: true
 
-delta_t <- data_elezione - max(df_elezioni$DATA)
+
 
 simula <- function(
     iterazioni = 200
@@ -577,7 +653,7 @@ simula <- function(
     prov_lista$DELTA_ITER <- rnorm(
       prov_lista$DELTA,
       prov_lista$DELTA,
-      prov_lista$SIGMA_P * delta_t
+      prov_lista$SIGMA_P
     )
     
     prov_lista$LOG_P_ITER <- prov_lista$LOG_P_ITER_R + prov_lista$DELTA_ITER
@@ -1264,12 +1340,69 @@ differenze <- rbindlist(tapply(
   }
 ), idcol = "LISTA")
 
-modello_differenze <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
+md_1 <- lm(abs(DIFFERENZA) ~ 1, data = differenze)
+md_1_T <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
+md_T <- lm(abs(DIFFERENZA) ~ DELTA_T - 1, data = differenze)
+md_L <- lm(abs(DIFFERENZA) ~ LISTA, data = differenze)
+md_L_T <- lm(abs(DIFFERENZA) ~ LISTA + DELTA_T, data = differenze)
+md_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T, data = differenze)
+md_L_LT <- lm(abs(DIFFERENZA) ~ LISTA + LISTA : DELTA_T, data = differenze)
 
-summary(modello_differenze)
+AIC(md_1)
+AIC(md_1_T)
+AIC(md_T)
+AIC(md_L)
+AIC(md_L_T)
+AIC(md_LT)
+AIC(md_L_LT)
+
+summary(md_L_LT)
 
 plot(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
-abline(modello_differenze)
+abline(md_1_T)
+
+
+differenzeP <- rbindlist(tapply(
+  prov_lista_elezione,
+  prov_lista_elezione$LISTA,
+  function(df) {
+    rbindlist(tapply(
+      df,
+      df$PROVINCIA,
+        function(df) {
+          df <- df[order(df$DATA),]
+          return(
+            data.frame(
+              DIFFERENZA = diff(df$DELTA),
+              DELTA_T = diff(df$DATA)
+            )
+          )
+    
+        }
+    ), idcol = "PROVINCIA")
+  }
+  
+  
+), idcol = "LISTA")
+
+md_1 <- lm(abs(DIFFERENZA) ~ 1, data = differenzeP)
+md_1_T <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenzeP)
+md_T <- lm(abs(DIFFERENZA) ~ DELTA_T - 1, data = differenzeP)
+md_L <- lm(abs(DIFFERENZA) ~ LISTA, data = differenzeP)
+md_L_T <- lm(abs(DIFFERENZA) ~ LISTA + DELTA_T, data = differenzeP)
+md_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T, data = differenzeP)
+md_L_LT <- lm(abs(DIFFERENZA) ~ LISTA + LISTA : DELTA_T, data = differenzeP)
+
+AIC(md_1)
+AIC(md_1_T)
+AIC(md_T)
+AIC(md_L)
+AIC(md_L_T)
+AIC(md_LT)
+AIC(md_L_LT)
+
+plot(abs(DIFFERENZA) ~ DELTA_T, data = differenzeP)
+abline(md_1_T)
 
 ```
 
