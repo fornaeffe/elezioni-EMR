@@ -744,7 +744,7 @@ kbl(
       color = "black",
       background = adjustcolor(
         coalizioni$COLORE[match(liste$COALIZIONE[liste$LISTA != "astensione"], coalizioni$COALIZIONE)],
-        alpha.f = 0.5
+        red.f = 3, green.f = 3, blue.f = 3
       )
         
     ) %>%
@@ -753,7 +753,7 @@ kbl(
       color = "black",
       background = adjustcolor(
         liste$COLORE[liste$LISTA != "astensione"],
-        alpha.f = 0.5
+        red.f = 3, green.f = 3, blue.f = 3
       )   
     )
 ```
@@ -976,9 +976,8 @@ disegna_tabella_prob <- function(lista) {
       i+1,
       background = hsv(
         valori_hsv["h", 1], 
-        valori_hsv["s", 1], 
-        valori_hsv["v", 1], 
-        tbl2[,i]
+        valori_hsv["s", 1]*tbl2[,i], 
+        1
       )
     )
   }
@@ -1192,84 +1191,7 @@ legend(
   ncol = 2
 )
 
-
-# Grafico dell'andamento del logaritmo della percentuale in base alla data
-plot(
-  PERCENTUALE * 100 ~ DATA, 
-  data = lista_elezione, 
-  pch = "",
-  ylab = "PERCENTUALE",
-  log = "y"
-)
-tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE, lwd = 2)
-})
-legend(
-  "bottomleft", 
-  inset=c(0,-0.6), 
-  legend=liste$LISTA, 
-  lwd = 2, 
-  col = liste$COLORE,
-  ncol = 2
-)
-
-```
-```{r controllo varianza}
-popolazione <- read_xlsx("dati/popolazione.xlsx")
-
-risultato$liste$PERCENTUALE_ELETTORI <- risultato$liste$VOTI_LISTA_ITER / sum(popolazione$ELETTORI)
-
-par(mar=c(4, 12, 0.1, 0.1))
-boxplot(
-  PERCENTUALE_ELETTORI ~ LISTA, 
-  data = risultato$liste,
-  horizontal = TRUE,
-  las=1,
-  xlab = "Percentuale sugli elettori",
-  ylab = NA,
-  col = liste$COLORE[liste$LISTA != "astensione"],
-  cex.axis = 0.8
-)
-
-
-SIGMA_R_POSTERIORI <- tapply(log(risultato$liste$PERCENTUALE_ELETTORI), risultato$liste$LISTA, sd)
-
-liste <- merge(
-  liste,
-  data.frame(SIGMA_R_POSTERIORI = SIGMA_R_POSTERIORI),
-  by.x = "LISTA", by.y = "row.names",
-  all.x = TRUE
-)
-
-barplot(
-  t(as.matrix(cbind(liste$SIGMA_R * delta_t, liste$SIGMA_R_POSTERIORI))),
-  beside = TRUE
-)
-
 ```
 
-```{r regressione differenze}
-differenze <- rbindlist(tapply(
-  lista_elezione,
-  lista_elezione$LISTA,
-  function(df) {
-    df <- df[order(df$DATA),]
-    return(
-      data.frame(
-        DIFFERENZA = diff(df$LOG_P),
-        DELTA_T = diff(df$DATA)
-      )
-    )
-    
-  }
-), idcol = "LISTA")
 
-modello_differenze <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
-
-summary(modello_differenze)
-
-plot(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
-abline(modello_differenze)
-
-```
 
