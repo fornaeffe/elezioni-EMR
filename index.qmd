@@ -472,8 +472,9 @@ lista_elezione <- merge(
 
 ```{r sigma}
 SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  ts <- zoo(df$LOG_P, df$DATA)
-  return(sd(unclass(diff(ts)) / unclass(diff(df$DATA))))
+  df <- df[order(df$DATA),]
+  
+  return(sd(diff(df$LOG_P) / unclass(diff(df$DATA))))
 })
 
 liste <- data.frame(
@@ -498,8 +499,8 @@ prov_lista_elezione <- merge(
 
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
-    ts <- zoo(df$DELTA, df$DATA)
-    return(unclass(diff(ts)) / unclass(diff(df$DATA)))
+    df <- df[order(df$DATA),]
+    return(diff(df$LOG_P) / unclass(diff(df$DATA)))
   })))
 })
 
@@ -628,6 +629,11 @@ simula <- function(
       scrutinio$prov_lista$VOTI_LISTA_ITER / 
       scrutinio$prov_lista$VOTI_LISTA_ITER_TOT
     
+    astensione <- prov_lista[
+      prov_lista$LISTA == "astensione", 
+      c("LISTA", "PROVINCIA", "VOTI_LISTA_ITER")
+    ]
+    
     scrutinio$liste <- merge(
       liste[, c(
         "COALIZIONE",
@@ -661,6 +667,7 @@ simula <- function(
       scrutinio$coalizioni$PRESIDENTE +
       scrutinio$coalizioni$MIGLIOR_PERDENTE +
       scrutinio$coalizioni$ELETTI
+    
     
     
     
@@ -733,29 +740,12 @@ risultato$liste$PERCENTUALE <- formattable::percent(risultato$liste$PERCENTUALE,
 
 ```{r}
 kbl(
-    liste[liste$LISTA != "astensione", c("COALIZIONE", "LISTA")],
+    liste[liste$COLORE != "#DDDDDD", c("COALIZIONE", "LISTA")],
     col.names = c("COALIZIONE", "LISTA"),
     caption = "Liste",
     row.names = FALSE
   ) %>%
-    kable_minimal() %>%
-    column_spec(
-      1,
-      color = "black",
-      background = adjustcolor(
-        coalizioni$COLORE[match(liste$COALIZIONE[liste$LISTA != "astensione"], coalizioni$COALIZIONE)],
-        red.f = 3, green.f = 3, blue.f = 3
-      )
-        
-    ) %>%
-    column_spec(
-      2,
-      color = "black",
-      background = adjustcolor(
-        liste$COLORE[liste$LISTA != "astensione"],
-        red.f = 3, green.f = 3, blue.f = 3
-      )   
-    )
+    kable_minimal()
 ```
 
 
@@ -911,8 +901,8 @@ superamento_soglia()
 
 
 tapply(
-  risultato$liste,
-  risultato$liste$LISTA,
+  risultato$liste[risultato$liste$COLORE != "#DDDDDD"],
+  risultato$liste$LISTA[risultato$liste$COLORE != "#DDDDDD"],
   function(df) {
     plot(
       ELETTI ~ I(PERCENTUALE*100),
@@ -1153,7 +1143,13 @@ dalla legge elettorale regionale.
 ## Serie storica dei risultati delle liste
 
 Di seguito la serie storica di elezioni considerate. Sono mostrate le
-percentuali di ciascuna lista 
+percentuali di ciascuna lista rispetto al totale degli aventi diritto al voto.
+
+In alcuni casi i risultati passati della lista sono basati sul risultato di 
+liste affini.
+
+I triangoli sulla destra comprendono il 95% dei risultati simulati di ciascuna
+lista alle prossime elezioni.
 
 ```{r}
 #| fig.width: 8
@@ -1161,6 +1157,24 @@ percentuali di ciascuna lista
 #| dpi: 100
 #| results: hide
 
+
+elettori <- 
+  lista_elezione$VOTI_LISTA_REG[lista_elezione$ELEZIONE == "europee2024"][1]
+
+votanti <- tapply(risultato$liste$VOTI_LISTA_ITER, risultato$liste$SIM, sum)
+astenuti <- data.frame(
+  LISTA = "astensione",
+  SIM = 1:length(votanti),
+  COALIZIONE = NA,
+  ELETTI = NA,
+  VOTI_LISTA_ITER = elettori - votanti,
+  PERCENTUALE = NA,
+  COLORE = liste$COLORE[liste$LISTA == "astensione"]
+)
+astenuti$PERCENTUALE <- formattable::percent(astenuti$PERCENTUALE, 2)
+risultato$liste <- rbind(risultato$liste, astenuti)
+risultato$liste$PERCENTUALE_ELETTORI <- 
+  risultato$liste$VOTI_LISTA_ITER / elettori
 
 lista_elezione <- merge(
   lista_elezione,
@@ -1172,24 +1186,56 @@ lista_elezione <- lista_elezione[order(lista_elezione$DATA),]
 
 par(mar=c(15.1, 4.1, 4.1, 2.1), xpd=TRUE)
 
-# Grafico dell'andamento della percentuale in base alla data
-plot(
-  PERCENTUALE * 100 ~ DATA, 
-  data = lista_elezione, 
-  pch = "",
-  ylab = "PERCENTUALE"
-)
-tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE, lwd = 2)
-})
-legend(
-  "bottomleft", 
-  inset=c(0,-0.6), 
-  legend=liste$LISTA, 
-  lwd = 2, 
-  col = liste$COLORE,
-  ncol = 2
-)
+disegna_grafico <- function(log = FALSE) {
+  # Grafico dell'andamento della percentuale in base alla data
+  plot(
+    PERCENTUALE * 100 ~ DATA, 
+    data = lista_elezione, 
+    pch = "",
+    ylab = "Percentuale sugli elettori",
+    xlim = c(min(DATA), data_elezione),
+    ylim = c(0, 100*quantile(
+      risultato$liste$PERCENTUALE_ELETTORI[risultato$liste$LISTA == "astensione"],
+      0.975
+    )),
+    log = ifelse(log, "y", "")
+  )
+  tapply(lista_elezione, lista_elezione$LISTA, function(df) {
+    lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE, lwd = 2)
+  })
+  
+  for (lista in liste$LISTA) {
+    y0 <- 100*lista_elezione$PERCENTUALE[
+      lista_elezione$LISTA == lista & 
+        lista_elezione$ELEZIONE == "europee2024"
+    ]
+    y1 <- 100*quantile(
+      risultato$liste$PERCENTUALE_ELETTORI[risultato$liste$LISTA == lista],
+      0.975
+    )
+    y2 <- 100*quantile(
+      risultato$liste$PERCENTUALE_ELETTORI[risultato$liste$LISTA == lista],
+      0.025
+    )
+    polygon(
+      c(max(lista_elezione$DATA), data_elezione, data_elezione),
+      c(y0, y1, y2),
+      border = liste$COLORE[liste$LISTA == lista],
+      col = adjustcolor(liste$COLORE[liste$LISTA == lista], alpha.f = 0.5)
+    )
+  }
+  
+  legend(
+    "bottomleft", 
+    inset=c(0,-0.6), 
+    legend=liste$LISTA, 
+    lwd = 2, 
+    col = liste$COLORE,
+    ncol = 2
+  )
+}
+
+disegna_grafico()
 
 ```
 
