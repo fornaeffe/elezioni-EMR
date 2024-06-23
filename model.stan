@@ -45,7 +45,7 @@ parameters {
     // proporzione di persone vicine a ciascuna lista
     array[P] simplex[L] frazione_base;
     array[E - 1, P, L] simplex[L] passaggi;
-    array[E] matrix<lower=0>[L, L] matrice_passaggi;
+    array[E - 1] matrix<lower=0>[L, L] matrice_passaggi;
     matrix<lower=0>[L, L] matrice_base;
 }
 
