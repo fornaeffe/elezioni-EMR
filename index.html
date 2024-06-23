@@ -6359,8 +6359,8 @@ RIMINI
 <section id="approfondimenti" class="level1">
 <h1>Approfondimenti</h1>
 <p>Per predire il numero di voti che ciascuna lista prenderà alle prossime elezioni regionali in ciascuna provincia ho ipotizzato che i voti presi da ciascuna lista seguano il modello che descrivo qui di seguito.</p>
-<p>Ho ipotizzato che la percentuale regionale (sul totale degli elettori) della lista <span class="math inline">\(l\)</span> nell’elezione <span class="math inline">\(t\)</span> (trasformata attraverso la funzione <span class="math inline">\(\operatorname{logit}^{-1}\)</span> affinché non sia vincolata tra 0 e 1) sia uguale alla percentuale regionale della stessa lista nell’elezione precedente (<span class="math inline">\(t-1\)</span>) (anch’essa trasformata tramite <span class="math inline">\(\operatorname{logit}^{-1}\)</span>), più una quantità (positiva o negativa) che dipende dal tempo trascorso tra le due elezioni e da una “velocità” di cambiamento casuale, con una distribuzione normale e una deviazione standard che può variare da lista a lista (ci saranno liste più stabili, le cui velocità di cambiamento saranno vicine allo zero, e liste meno stabili con velocità di cambiamento che possono discostarsi maggiormente dallo zero).</p>
-<p><span class="math display">\[ \operatorname{logit}^{-1}(P_{l,t}) = \operatorname{logit}^{-1}(P_{l,t-1})
+<p>Ho ipotizzato che la percentuale regionale (sul totale degli elettori) della lista <span class="math inline">\(l\)</span> nell’elezione <span class="math inline">\(t\)</span> (trasformata attraverso la funzione <span class="math inline">\(\operatorname{logit}\)</span> affinché non sia vincolata tra 0 e 1) sia uguale alla percentuale regionale della stessa lista nell’elezione precedente (<span class="math inline">\(t-1\)</span>) (anch’essa trasformata tramite <span class="math inline">\(\operatorname{logit}\)</span>), più una quantità (positiva o negativa) che dipende dal tempo trascorso tra le due elezioni e da una “velocità” di cambiamento casuale, con una distribuzione normale e una deviazione standard che può variare da lista a lista (ci saranno liste più stabili, le cui velocità di cambiamento saranno vicine allo zero, e liste meno stabili con velocità di cambiamento che possono discostarsi maggiormente dallo zero).</p>
+<p><span class="math display">\[ \operatorname{logit}(P_{l,t}) = \operatorname{logit}(P_{l,t-1})
 + (data_t - data_{t-1}) \cdot v_{R, l, t} \]</span></p>
 <p><span class="math display">\[ v_{R, l, t} \sim \mathcal{N}(0, \sigma_{R,l})\]</span></p>
 <p>Dove</p>
@@ -6371,8 +6371,8 @@ RIMINI
 <li><span class="math inline">\(v_{R, l, t}\)</span> è la velocità di cambiamento della percentuale trasformata regionale della lista <span class="math inline">\(l\)</span> tra l’elezione <span class="math inline">\(t-1\)</span> e l’elezione <span class="math inline">\(t\)</span></li>
 <li><span class="math inline">\(\sigma_{R,l}\)</span> è la deviazione standard delle velocità di cambiamento della percentuale (logit-trasformata) della lista <span class="math inline">\(l\)</span>.</li>
 </ul>
-<p>Ipotizzo poi che, per ciascuna provincia <span class="math inline">\(p\)</span>, la percentuale provinciale <span class="math inline">\(p_{l,p,t}\)</span> della lista <span class="math inline">\(l\)</span> sul totale degli aventi diritto al voto (sempre trasformata tramite <span class="math inline">\(\operatorname{logit}^{-1}\)</span>) sia uguale alla percentuale regionale <span class="math inline">\(P_{l,t}\)</span> (trasformata) della stessa lista, più (o meno) una differenza <span class="math inline">\(\delta_{l,p,t}\)</span> specifica per la provincia:</p>
-<p><span class="math display">\[\operatorname{logit}^{-1}(p_{l,p,t}) = \operatorname{logit}^{-1}(P_{l,t}) +
+<p>Ipotizzo poi che, per ciascuna provincia <span class="math inline">\(p\)</span>, la percentuale provinciale <span class="math inline">\(p_{l,p,t}\)</span> della lista <span class="math inline">\(l\)</span> sul totale degli aventi diritto al voto (sempre trasformata tramite <span class="math inline">\(\operatorname{logit}\)</span>) sia uguale alla percentuale regionale <span class="math inline">\(P_{l,t}\)</span> (trasformata) della stessa lista, più (o meno) una differenza <span class="math inline">\(\delta_{l,p,t}\)</span> specifica per la provincia:</p>
+<p><span class="math display">\[\operatorname{logit}(p_{l,p,t}) = \operatorname{logit}(P_{l,t}) +
 \delta_{l,p,t}\]</span></p>
 <p>Ipotizzo infine che questa differenza possa cambiare tra un’elezione e l’altra di una quantità che dipende dal tempo trascorso e da una “velocità” casuale con una distribuzione normale e una deviazione standard <span class="math inline">\(\sigma_{P, l}\)</span> specifica per la lista:</p>
 <p><span class="math display">\[
@@ -6390,7 +6390,7 @@ v_{p, l, t}
 <ul>
 <li>per ciascuna lista <span class="math inline">\(l\)</span>, la deviazione standard <span class="math inline">\(\sigma_{R,l}\)</span> delle velocità di cambiamento delle percentuali regionali trasformate;</li>
 <li>per ciascuna lista <span class="math inline">\(l\)</span>, la deviaizone standard <span class="math inline">\(\sigma_{P,l}\)</span> delle velocità di cambiamento delle differenze tra ciascuna provincia e la regione;</li>
-<li>per ciascuna lista <span class="math inline">\(l\)</span>, la percentuale regionale trasformata <span class="math inline">\(\operatorname{logit}^{-1}(P_{l,europee\ 2024})\)</span> ottenuta alle ultime elezioni;</li>
+<li>per ciascuna lista <span class="math inline">\(l\)</span>, la percentuale regionale trasformata <span class="math inline">\(\operatorname{logit}(P_{l,europee\ 2024})\)</span> ottenuta alle ultime elezioni;</li>
 <li>per ciascuna lista <span class="math inline">\(l\)</span> e ciascuna provincia <span class="math inline">\(p\)</span>, la differenza <span class="math inline">\(\delta_{l,p,europee\ 2024}\)</span> tra la percentuale trasformata provinciale e regionale alle ultime elezioni.</li>
 </ul>
 <p>Per fare una simulazione dei voti delle prossime elezioni, quindi:</p>

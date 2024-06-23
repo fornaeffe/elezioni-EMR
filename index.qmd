@@ -1052,9 +1052,9 @@ ciascuna lista seguano il modello che descrivo qui di seguito.
 
 Ho ipotizzato che la percentuale regionale (sul totale degli elettori) della 
 lista $l$ nell'elezione $t$ (trasformata attraverso la funzione 
-$\operatorname{logit}^{-1}$ affinché non sia vincolata tra 0 e 1) sia uguale alla 
+$\operatorname{logit}$ affinché non sia vincolata tra 0 e 1) sia uguale alla 
 percentuale regionale della stessa lista nell'elezione precedente ($t-1$) 
-(anch'essa trasformata tramite $\operatorname{logit}^{-1}$), più una quantità 
+(anch'essa trasformata tramite $\operatorname{logit}$), più una quantità 
 (positiva o negativa) che dipende dal tempo trascorso tra le due elezioni e da 
 una "velocità" di cambiamento casuale, con una distribuzione normale e una 
 deviazione standard che può variare da lista a lista (ci saranno liste più 
@@ -1062,7 +1062,7 @@ stabili, le cui velocità di cambiamento saranno vicine allo zero, e liste meno
 stabili con velocità di cambiamento che possono discostarsi maggiormente dallo 
 zero).
 
-$$ \operatorname{logit}^{-1}(P_{l,t}) = \operatorname{logit}^{-1}(P_{l,t-1}) 
+$$ \operatorname{logit}(P_{l,t}) = \operatorname{logit}(P_{l,t-1}) 
 + (data_t - data_{t-1}) \cdot v_{R, l, t} $$
 
 $$ v_{R, l, t} \sim \mathcal{N}(0, \sigma_{R,l})$$
@@ -1080,11 +1080,11 @@ percentuale (logit-trasformata) della lista $l$.
 
 Ipotizzo poi che, per ciascuna provincia $p$, la percentuale provinciale 
 $p_{l,p,t}$ della lista $l$ sul totale degli aventi diritto al voto 
-(sempre trasformata tramite $\operatorname{logit}^{-1}$) sia uguale alla 
+(sempre trasformata tramite $\operatorname{logit}$) sia uguale alla 
 percentuale regionale $P_{l,t}$ (trasformata) della stessa lista, più (o meno) 
 una differenza $\delta_{l,p,t}$ specifica per la provincia:
 
-$$\operatorname{logit}^{-1}(p_{l,p,t}) = \operatorname{logit}^{-1}(P_{l,t}) +
+$$\operatorname{logit}(p_{l,p,t}) = \operatorname{logit}(P_{l,t}) +
 \delta_{l,p,t}$$
 
 Ipotizzo infine che questa differenza possa cambiare tra un'elezione e l'altra
@@ -1117,7 +1117,7 @@ di cambiamento delle percentuali regionali trasformate;
 * per ciascuna lista $l$, la deviaizone standard $\sigma_{P,l}$ delle velocità
 di cambiamento delle differenze tra ciascuna provincia e la regione;
 * per ciascuna lista $l$, la percentuale regionale trasformata 
-$\operatorname{logit}^{-1}(P_{l,europee\ 2024})$ ottenuta alle ultime elezioni;
+$\operatorname{logit}(P_{l,europee\ 2024})$ ottenuta alle ultime elezioni;
 * per ciascuna lista $l$ e ciascuna provincia $p$, la differenza 
 $\delta_{l,p,europee\ 2024}$ tra la percentuale trasformata provinciale e
 regionale alle ultime elezioni.
