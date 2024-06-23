@@ -34,6 +34,8 @@ library(readxl)
 library(parallel)
 library(kableExtra)
 library(zoo)
+library(abind)
+library(rstan)
 
 data_elezione <- as.POSIXct("2024-10-27")
 
@@ -461,134 +463,62 @@ lista_elezione <- aggregate(
 
 lista_elezione <- merge(
   lista_elezione,
-  aggregate(
-    VOTI_LISTA ~ ELEZIONE,
-    lista_elezione,
-    sum
-  ),
-  by = "ELEZIONE",
-  suffixes = c("", "_REG")
-)
-
-lista_elezione$PERCENTUALE <- 
-  lista_elezione$VOTI_LISTA / lista_elezione$VOTI_LISTA_REG
-
-lista_elezione$LOG_P <- qlogis(lista_elezione$PERCENTUALE)
-
-
-
-lista_elezione <- merge(
-  lista_elezione,
   df_elezioni[, c("ELEZIONE", "DATA")]
 )
 
+prov_lista_elezione <- merge(
+  prov_lista_elezione,
+  df_elezioni[, c("ELEZIONE", "DATA")]
+)
 
 ```
 
 
-```{r sigma}
+```{r stan}
 
-differenze <- rbindlist(tapply(
-  lista_elezione,
-  lista_elezione$LISTA,
-  function(df) {
-    df <- df[order(df$DATA),]
-    return(
-      data.frame(
-        DIFFERENZA = diff(df$LOG_P),
-        DELTA_T = diff(df$DATA)
-      )
-    )
-    
-  }
-), idcol = "LISTA")
+prepara_voti <- function() {
+  a <- aggregate(
+    VOTI_LISTA ~ DATA + PROVINCIA + LISTA,
+    prov_lista_elezione,
+    sum,
+    drop = FALSE
+  )
+  
+  b <- split(a, a$LISTA)
+  
+  c <- abind(
+    lapply(b, function(l) abind(split(l$VOTI_LISTA, l$PROVINCIA), along = 2)),
+    along = 3
+  )
+  
+  c[is.na(c)] <- 0
+  return(c)
+}
 
-differenze$LISTA <- factor(differenze$LISTA, levels(liste$LISTA))
 
-md_1 <- lm(abs(DIFFERENZA) ~ 1, data = differenze)
-md_1_T <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenze)
-md_T <- lm(abs(DIFFERENZA) ~ DELTA_T - 1, data = differenze)
-md_L <- lm(abs(DIFFERENZA) ~ LISTA - 1, data = differenze)
-md_L_T <- lm(abs(DIFFERENZA) ~ LISTA + DELTA_T - 1, data = differenze)
-md_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T - 1, data = differenze)
-md_1_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T, data = differenze)
-md_L_LT <- lm(abs(DIFFERENZA) ~ LISTA + LISTA : DELTA_T - 1, data = differenze)
 
-AIC(md_1)
-AIC(md_1_T)
-AIC(md_T)
-AIC(md_L)
-AIC(md_L_T)
-AIC(md_LT)
-AIC(md_1_LT)
-AIC(md_L_LT)
 
-liste$SIGMA0 <- md_L_LT$coefficients[1:nrow(liste)]
-liste$SIGMA0[is.na(liste$SIGMA0)] <- mean(liste$SIGMA0, na.rm = TRUE)
-
-liste$v <- md_L_LT$coefficients[(nrow(liste)+1):(2*nrow(liste))]
-liste$v[is.na(liste$v)] <- mean(liste$v, na.rm = TRUE)
-
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  lista_elezione[, c("LISTA", "ELEZIONE", "LOG_P")],
-  by = c("LISTA", "ELEZIONE"),
-  suffixes = c("", "_REG")
+dati <- list(
+  L = nrow(liste),
+  E = nrow(df_elezioni),
+  P = nrow(province),
+  presente = table(lista_elezione$DATA, lista_elezione$LISTA),
+  voti = prepara_voti(),
+  sigma2_e = 1,
+  mu_stesso = 50,
+  sigma2_stesso = 10,
+  mu_diverso = 1,
+  sigma2_diverso = 1
 )
 
-prov_lista_elezione$DELTA <- 
-  prov_lista_elezione$LOG_P - prov_lista_elezione$LOG_P_REG
+options(mc.cores = parallel::detectCores())
 
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  df_elezioni[, c("ELEZIONE", "DATA")]
+stan(
+  "model2.stan",
+  dati,
+  chains = 1,
+  iter = 10
 )
-
-differenzeP <- rbindlist(tapply(
-  prov_lista_elezione,
-  prov_lista_elezione$LISTA,
-  function(df) {
-    rbindlist(tapply(
-      df,
-      df$PROVINCIA,
-        function(df) {
-          df <- df[order(df$DATA),]
-          return(
-            data.frame(
-              DIFFERENZA = diff(df$DELTA),
-              DELTA_T = diff(df$DATA)
-            )
-          )
-    
-        }
-    ), idcol = "PROVINCIA")
-  }
-  
-  
-), idcol = "LISTA")
-
-differenzeP$LISTA <- factor(differenzeP$LISTA, levels(liste$LISTA))
-
-mdp_1 <- lm(abs(DIFFERENZA) ~ 1, data = differenzeP)
-mdp_1_T <- lm(abs(DIFFERENZA) ~ DELTA_T, data = differenzeP)
-mdp_T <- lm(abs(DIFFERENZA) ~ DELTA_T - 1, data = differenzeP)
-mdp_L <- lm(abs(DIFFERENZA) ~ LISTA -1, data = differenzeP)
-mdp_L_T <- lm(abs(DIFFERENZA) ~ LISTA + DELTA_T -1, data = differenzeP)
-mdp_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T -1, data = differenzeP)
-mdp_1_LT <- lm(abs(DIFFERENZA) ~ LISTA : DELTA_T, data = differenzeP)
-mdp_L_LT <- lm(abs(DIFFERENZA) ~ LISTA + LISTA : DELTA_T -1, data = differenzeP)
-
-AIC(mdp_1)
-AIC(mdp_1_T)
-AIC(mdp_T)
-AIC(mdp_L)
-AIC(mdp_L_T)
-AIC(mdp_LT)
-AIC(mdp_1_LT)
-AIC(mdp_L_LT)
-
-
-liste$SIGMAP <- mdp_L$coefficients
 
 
 ```
