@@ -34,6 +34,8 @@ library(readxl)
 library(parallel)
 library(kableExtra)
 library(zoo)
+library(abind)
+library(rstan)
 
 data_elezione <- as.POSIXct("2024-10-27")
 
@@ -400,6 +402,22 @@ prov_lista_elezione <- aggregate(
   prov_lista_elezione,
   sum
 )
+
+prov_lista_elezione$LISTA <- as.factor(prov_lista_elezione$LISTA)
+```
+
+```{r}
+# Carico le liste
+liste <- read_xlsx("dati/liste.xlsx")
+liste <- rbind(
+  liste,
+  data.frame(
+    COALIZIONE = NA,
+    LISTA = "astensione",
+    COLORE = NA
+  )
+)
+liste$LISTA <- factor(liste$LISTA, levels(prov_lista_elezione$LISTA))
 ```
 
 
@@ -445,27 +463,13 @@ lista_elezione <- aggregate(
 
 lista_elezione <- merge(
   lista_elezione,
-  aggregate(
-    VOTI_LISTA ~ ELEZIONE,
-    lista_elezione,
-    sum
-  ),
-  by = "ELEZIONE",
-  suffixes = c("", "_REG")
-)
-
-lista_elezione$PERCENTUALE <- 
-  lista_elezione$VOTI_LISTA / lista_elezione$VOTI_LISTA_REG
-
-lista_elezione$LOG_P <- qlogis(lista_elezione$PERCENTUALE)
-
-
-
-lista_elezione <- merge(
-  lista_elezione,
   df_elezioni[, c("ELEZIONE", "DATA")]
 )
 
+prov_lista_elezione <- merge(
+  prov_lista_elezione,
+  df_elezioni[, c("ELEZIONE", "DATA")]
+)
 
 ```
 
@@ -477,25 +481,28 @@ SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
   return(sd(diff(df$LOG_P) / unclass(diff(df$DATA))))
 })
 
-liste <- data.frame(
-  LISTA = names(SIGMA_R),
-  SIGMA_R = SIGMA_R
-)
+prepara_voti <- function() {
+  a <- aggregate(
+    VOTI_LISTA ~ DATA + PROVINCIA + LISTA,
+    prov_lista_elezione,
+    sum,
+    drop = FALSE
+  )
+  
+  b <- split(a, a$LISTA)
+  
+  c <- abind(
+    lapply(b, function(l) abind(split(l$VOTI_LISTA, l$PROVINCIA), along = 2)),
+    along = 3
+  )
+  
+  c[is.na(c)] <- 0
+  return(c)
+}
 
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  lista_elezione[, c("LISTA", "ELEZIONE", "LOG_P")],
-  by = c("LISTA", "ELEZIONE"),
-  suffixes = c("", "_REG")
-)
 
-prov_lista_elezione$DELTA <- 
-  prov_lista_elezione$LOG_P - prov_lista_elezione$LOG_P_REG
 
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  df_elezioni[, c("ELEZIONE", "DATA")]
-)
+
 
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
@@ -506,10 +513,14 @@ SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
 
 stopifnot(all.equal(names(SIGMA_P), liste$LISTA))
 
-liste$SIGMA_P <- SIGMA_P
+options(mc.cores = parallel::detectCores())
 
-liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
-liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
+stan(
+  "model2.stan",
+  dati,
+  chains = 1,
+  iter = 10
+)
 
 
 ```
@@ -518,13 +529,6 @@ liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 #| include: false
 #| cache: true
 
-##### Carico liste regionali #####
-
-liste_coal <- read_xlsx("dati/liste.xlsx")
-
-stopifnot(setequal(liste$LISTA, c(liste_coal$LISTA, "astensione")))
-
-liste <- merge(liste, liste_coal, all.x = TRUE)
 
 liste <- merge(
   liste,
@@ -538,7 +542,7 @@ prov_lista <- prov_lista_elezione[
 
 prov_lista <- merge(
   prov_lista,
-  liste[, c("LISTA", "SIGMA_P")]
+  liste[, c("LISTA", "SIGMAP")]
 )
 
 ```
@@ -564,7 +568,7 @@ simula <- function(
     liste$LOG_P_ITER <- rnorm(
       liste$LOG_P,
       liste$LOG_P,
-      liste$SIGMA_R * delta_t
+      abs(liste$SIGMA0 + liste$v * delta_t)
     )
     
     #### Simulazione percentuali per provincia ####
@@ -578,7 +582,7 @@ simula <- function(
     prov_lista$DELTA_ITER <- rnorm(
       prov_lista$DELTA,
       prov_lista$DELTA,
-      prov_lista$SIGMA_P * delta_t
+      prov_lista$SIGMAP
     )
     
     prov_lista$LOG_P_ITER <- prov_lista$LOG_P_ITER_R + prov_lista$DELTA_ITER
@@ -1186,6 +1190,7 @@ lista_elezione <- lista_elezione[order(lista_elezione$DATA),]
 
 par(mar=c(15.1, 4.1, 4.1, 2.1), xpd=TRUE)
 
+
 disegna_grafico <- function(log = FALSE) {
   # Grafico dell'andamento della percentuale in base alla data
   plot(
@@ -1222,6 +1227,8 @@ disegna_grafico <- function(log = FALSE) {
       c(y0, y1, y2),
       border = liste$COLORE[liste$LISTA == lista],
       col = adjustcolor(liste$COLORE[liste$LISTA == lista], alpha.f = 0.5)
+
+
     )
   }
   
