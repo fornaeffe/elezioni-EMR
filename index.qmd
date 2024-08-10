@@ -981,7 +981,7 @@ grafico_eletti <- function(lista) {
     col = colori,
     yaxlabels = NA,
     ylab = NA,
-    xlab = "Percentuale dei voti validi",
+    xlab = "Percentuale sui voti validi",
     main = lista
   )
   
@@ -1008,6 +1008,156 @@ grafico_eletti <- function(lista) {
 }
 
 for (lista in liste$LISTA[liste$COLORE != "#DDDDDD"]) grafico_eletti(lista)
+
+
+
+
+```
+### Numero di seggi nella provincia di Parma rispetto alle percentuali ottenute
+```{r}
+grafico_eletti_prov <- function(lista, provincia_eletti, provincia_percentuale = NA) {
+  lp <- risultato$prov_lista[risultato$prov_lista$LISTA == lista & risultato$prov_lista$PROVINCIA == provincia_eletti]
+  
+  if (is.na(provincia_percentuale)) {
+    percentuali <- risultato$liste[risultato$liste$LISTA == lista]
+  } else {
+    percentuali <- risultato$prov_lista[risultato$prov_lista$LISTA == lista & risultato$prov_lista$PROVINCIA == provincia_percentuale]
+  }
+  
+  lp$PERCENTUALE <- NULL
+  lp <- merge(
+    lp,
+    percentuali[,c("SIM", "PERCENTUALE")]
+  )
+  
+  nmax <- factor(
+      lp$ELETTI
+    )
+  colori <- colorRampPalette(
+    c(
+      liste$COLORE[liste$LISTA == lista],
+      "#FFFFFF"
+    )
+  )(length(levels(nmax)))
+  tab <- spineplot(
+    nmax ~ I(
+      lp$PERCENTUALE*100
+    ),
+    breaks = 12,
+    col = colori,
+    yaxlabels = NA,
+    ylab = NA,
+    xlab = paste(
+      "Percentuale sui voti validi",
+      ifelse(is.na(provincia_percentuale), "in regione", paste("a", provincia_percentuale))
+    ),
+    main = lista
+  )
+  mtext(side = 3, line = 0.25, paste("Numero di eletti nella provincia di", provincia_eletti))
+  
+  # From https://stackoverflow.com/questions/74814855/how-can-i-plot-data-labels-over-spineplot-in-r
+  nums <- t(apply(tab, 1,rev))
+  pcts <- prop.table(cbind(0, nums), 1)
+  pcts <- t(apply(pcts, 1, cumsum))
+  yvals <- pcts[,-ncol(pcts)] + (pcts[,-1] - pcts[,-ncol(pcts)])/2
+  xvals <- cumsum(c(0, rowSums(nums)/sum(rowSums(nums))))
+  xvals <- xvals[-length(xvals)] + (xvals[-1] - xvals[-length(xvals)])/2
+  xvals <- array(xvals, dim=dim(yvals))
+  xvals <- c(xvals)
+  yvals <- c(yvals)
+  labs <- rep(colnames(nums), each = nrow(nums))
+  
+  text(x = xvals[nums > 5], y = yvals[nums > 5], labels = labs[nums > 5])
+  
+  
+}
+
+grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA")
+
+grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "PARMA")
+
+grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "BOLOGNA")
+
+grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "REGGIO NELL'EMILIA")
+grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "MODENA")
+```
+
+<!-- ## Possibilità di eleggere a Parma e Reggio in base alle relative percentuali -->
+```{r}
+# grafico_pp <- function(
+#     lista1, 
+#     lista2 = lista1, 
+#     provincia1 = NA, 
+#     provincia2 = provincia1,
+#     dato = "percentuali"
+# ) {
+#   
+#   stopifnot(
+#     lista1 %in% liste$LISTA,
+#     lista2 %in% liste$LISTA,
+#     provincia1 %in% c(NA, province$PROVINCIA),
+#     provincia2 %in% c(NA, province$PROVINCIA)
+#   )
+#   
+#   estrai_df <- function(lista, provincia) {
+#     if (is.na(provincia)) {
+#       df <- risultato$liste[
+#         risultato$liste$LISTA == lista,
+#         c("SIM", "ELETTI", "PERCENTUALE", "VOTI_LISTA_ITER")
+#       ]
+#     } else {
+#       df <- risultato$prov_lista[
+#         risultato$prov_lista$LISTA == lista & 
+#           risultato$prov_lista$PROVINCIA == provincia,
+#         c("SIM", "ELETTI", "PERCENTUALE", "VOTI_LISTA_ITER")
+#       ]
+#     }
+#     
+#     if (dato == "voti") {
+#       df$DATO <- df$VOTI_LISTA_ITER
+#     } else {
+#       df$DATO <- df$PERCENTUALE
+#     }
+# 
+#     df$VOTI_LISTA_ITER <- NULL
+#     df$PERCENTUALE <- NULL
+#     
+#     df
+#   }
+#   
+#   df <- merge(
+#     estrai_df(lista1, provincia1),
+#     estrai_df(lista2, provincia2),
+#     by = "SIM",
+#     suffixes = c("_1", "_2")
+#   )
+#   
+#   plot(
+#     DATO_1 ~ DATO_2,
+#     data = df,
+#     xlim = c(
+#       min(c(DATO_1, DATO_2)),
+#       max(c(DATO_1, DATO_2))
+#     ),
+#     ylim = c(
+#       min(c(DATO_1, DATO_2)),
+#       max(c(DATO_1, DATO_2))
+#     ),
+#     pch = 19,
+#     col = ifelse(ELETTI_1 > 0, "#00FF0080", "#00000040"),
+#     cex = 3
+#   )
+#   abline(0,1)
+#   
+#   
+# }
+# 
+# grafico_pp(
+#   "ALLEANZA VERDI SINISTRA",
+#   "ALLEANZA VERDI SINISTRA", 
+#   "PARMA",
+#   "REGGIO NELL'EMILIA"
+# )
 ```
 
 
