@@ -53,21 +53,12 @@ importa_dati <- function() {
   # Rinomino le colonne per coerenza con le altre fonti
   setnames(base_dati, c("DEN_PRO_CM20", "DEN_COM20"), c("PROVINCIA", "COMUNE"))
   
-  
-  
-  names(base_dati)[names(base_dati) == "DEN_PRO_CM20"] <- "PROVINCIA"
-  names(base_dati)[names(base_dati) == "DEN_COM20"] <- "COMUNE"
-  
   # Trasformo in maiuscolo per coerenza
   base_dati$PROVINCIA <- toupper(base_dati$PROVINCIA)
   base_dati$COMUNE <- toupper(base_dati$COMUNE)
   
   # Ottengo l'elenco delle province
-  province <- aggregate(
-    POP_2011 ~ PROVINCIA,
-    base_dati,
-    sum
-  )
+  province <- base_dati[, sum(POP_2011), by = PROVINCIA]
   
   # Ottengo l'elenco dei comuni
   comuni <- unique(base_dati[, c("PROVINCIA", "COMUNE")])
