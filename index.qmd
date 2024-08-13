@@ -45,19 +45,16 @@ data_elezione <- as.POSIXct("2024-11-17")
 #### Importazione dati ####
 
 ##### Base dati #####
-
-# TODO usare una base dati più aggiornata, soprattutto per quanto riguarda
-# la popolazione
-
 importa_dati <- function() {
-  base_dati <- read.csv2(
-    "dati/BaseDati_Proposta_Commissione.csv",
-    fileEncoding = "utf-8",
-    na.strings = ""
-  )
   
+  # Carico i dati
+  base_dati <- fread("dati/BaseDati_Proposta_Commissione.csv", na.strings = "")
   
   # Rinomino le colonne per coerenza con le altre fonti
+  setnames(base_dati, c("DEN_PRO_CM20", "DEN_COM20"), c("PROVINCIA", "COMUNE"))
+  
+  
+  
   names(base_dati)[names(base_dati) == "DEN_PRO_CM20"] <- "PROVINCIA"
   names(base_dati)[names(base_dati) == "DEN_COM20"] <- "COMUNE"
   
