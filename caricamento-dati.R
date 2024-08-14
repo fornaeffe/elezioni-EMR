@@ -22,7 +22,7 @@ library(parallel)
 #### Camera 2018 ####
 
 # Preparo il nome del file temporaneo da scaricare
-file_path <- file.path(tempdir(), "camera-20180304.zip")
+file_path <- tempfile(pattern = "camera_2018", fileext = ".zip")
 
 # Scarico il file zip
 download.file(
@@ -50,7 +50,7 @@ camera_2018 <- fread(
 
 
 # Preparo il nome del file temporaneo da scaricare
-file_path <- file.path(tempdir(), "camera-20220925.zip")
+file_path <- tempfile(pattern = "camera_2022", fileext = ".zip")
 
 # Scarico il file zip
 download.file(
@@ -69,6 +69,36 @@ unzip(
 camera_2022 <- fread(file.path(tempdir(), "Camera_Italia_LivComune.txt"))
 camera_2022_Aosta <- fread(file.path(tempdir(), "Camera_VAosta_LivComune.txt"))
 
+#### Variazioni amministrative territoriali ####
+
+# https://www.istat.it/storage/codici-unita-amministrative/Variazioni%20amministrative%20e%20territoriali%20dal%201991.zip
+
+
+# Preparo il nome del file temporaneo da scaricare
+file_path <- tempfile(pattern = "ISTAT_var", fileext = ".zip")
+
+# Scarico il file zip
+download.file(
+  "https://www.istat.it/storage/codici-unita-amministrative/Variazioni%20amministrative%20e%20territoriali%20dal%201991.zip",
+  file_path
+)
+
+internal_file_path <- file.path(
+  "Variazioni amministrative e territoriali dal 1991",
+  "Variazioni_amministrative_territoriali_dal_01011991.csv"
+)
+
+# Estraggo il file csv
+unzip(
+  file_path,
+  internal_file_path,
+  exdir = tempdir(),
+  unzip = "unzip"
+)
+
+# Leggo il file appena estratto e creo un data.table
+ISTAT_variazioni <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
+
 #### Codici statistici e unità territoriali ####
 
 # http://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unit%C3%A0-territoriali.zip
@@ -82,7 +112,7 @@ download.file(
   file_path
 )
 
-interal_file_path <- file.path(
+internal_file_path <- file.path(
   "Elenco-codici-statistici-e-denominazioni-delle-unità-territoriali",
   "Codici-statistici-e-denominazioni-al-30_06_2024.csv"
 )
@@ -90,7 +120,7 @@ interal_file_path <- file.path(
 # Estraggo il file csv
 unzip(
   file_path,
-  interal_file_path,
+  internal_file_path,
   exdir = tempdir(),
   unzip = "unzip"
 )
