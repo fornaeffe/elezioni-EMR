@@ -6,6 +6,8 @@
 /.quarto/
 
 index_cache
+index_files
+index.html
 
 /saved/
 
