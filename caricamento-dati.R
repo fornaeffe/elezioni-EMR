@@ -126,7 +126,7 @@ unzip(
 )
 
 # Leggo il file appena estratto e creo un data.table
-ISTAT <- fread(file.path(tempdir(), interal_file_path), encoding = "Latin-1")
+ISTAT <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
 
 #### Unione ####
 find_best_matches <- function(v, v_ref) {
