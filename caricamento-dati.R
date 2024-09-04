@@ -1,5 +1,6 @@
 library(data.table)
 library(parallel)
+library(stringr)
 
 #### Base dati relativa ai collegi elettorali ####
 
@@ -99,6 +100,75 @@ unzip(
 # Leggo il file appena estratto e creo un data.table
 ISTAT_variazioni <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
 
+# Tengo solo le variazioni che mi interessano
+ISTAT_variazioni_pulito <- ISTAT_variazioni[
+  !(ISTAT_variazioni$`Tipo variazione` %in% c("AQ", "CE", "CECS")),
+]
+
+# Fix typo
+ISTAT_variazioni_pulito$`Provvedimento e Documento` <- gsub(
+  "novenbre",
+  "novembre",
+  ISTAT_variazioni_pulito$`Provvedimento e Documento`
+)
+ISTAT_variazioni_pulito$`Provvedimento e Documento` <- gsub(
+  "maggio1992",
+  "maggio 1992",
+  ISTAT_variazioni_pulito$`Provvedimento e Documento`
+)
+
+# Definisci la funzione per estrarre e convertire la data
+estrai_data <- function(testo) {
+  # Pattern per riconoscere la data
+  pattern <- "\\b\\d{1,2} [a-z]+ \\d{4}\\b"
+  
+  # Estrazione della data della pubblicazione in Gazzetta come stringa
+  data_string_list <- str_extract_all(testo, pattern)
+  data_string <- sapply(
+    data_string_list, 
+    function(x) {
+      if (length(x) > 0) {
+        return(tail(x, 1))
+      } else {
+        return(NA)
+      }
+    }
+  )
+  
+  # Conversione della stringa in un oggetto Date
+  data <- as.Date(data_string, format = "%d %B %Y")
+  
+  return(data)
+}
+
+# Estraggo le date
+ISTAT_variazioni_pulito$DATA <- estrai_data(ISTAT_variazioni_pulito$`Provvedimento e Documento`)
+
+# Ordino la tabella
+ISTAT_variazioni_pulito <- ISTAT_variazioni_pulito[order(DATA)]
+
+# Controllo che non ci siano comuni che vengono spezzettati in altri
+tabella <- ISTAT_variazioni_pulito[
+  `Tipo variazione` %in% c("CS", "AQES"),
+  .(.N),
+  by = .(`Provvedimento e Documento`, `Denominazione Comune associata alla variazione o nuova denominazione`)
+]
+
+tabella <- tabella[N > 1,]
+
+if (nrow(tabella) > 0) warning("Alcuni comuni sono stati spezzettati")
+
+# Controllo che non ci siano comuni che vengono spezzettati in altri
+tabella <- ISTAT_variazioni_pulito[
+  `Tipo variazione` %in% c("ES"),
+  .(.N),
+  by = .(`Provvedimento e Documento`, `Denominazione Comune`)
+]
+
+tabella <- tabella[N > 1,]
+
+if (nrow(tabella) > 0) warning("Alcuni comuni sono stati spezzettati")
+
 #### Codici statistici e unità territoriali ####
 
 # http://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unit%C3%A0-territoriali.zip
@@ -129,41 +199,109 @@ unzip(
 ISTAT <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
 
 #### Unione ####
-find_best_matches <- function(v, v_ref) {
+aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
+
+  nomi_comuni <- unique(DT[,..colonna_nome_comune][[1]])
   
-  v <- unique(v)
-  v_ref <- unique(v_ref)
+  variazioni <- ISTAT_variazioni_pulito[DATA > data_elezione]
   
-  find_matches <- function(stringa, v_ref) {
-    
-    if (stringa %in% v_ref) return(c(stringa, stringa))
-    
-    matches <- agrep(
-      stringa, 
-      v_ref, 
-      max.distance = 0.1,
-      value = TRUE, 
-      ignore.case = TRUE
-    )
-    
-    if (length(matches) == 0) {
-      return(c(stringa, NA))
+  tutti_i_nomi <- c(
+    ISTAT$`Denominazione (Italiana e straniera)`,
+    ISTAT$`Denominazione in italiano`,
+    variazioni$`Denominazione Comune`
+  )
+  
+  # Funzione che ricostruisce le variazioni nel codice e nel nome del comune
+  comune_attuale <- function(indice) {
+    codice <- variazioni$`Codice Comune formato alfanumerico`[indice]
+    for (i in indice:nrow(variazioni)) {
+      if (variazioni$`Codice Comune formato alfanumerico`[i] != codice) next
+      
+      if (variazioni$`Tipo variazione`[i] %in% c("ES", "CD", "AP")) {
+        codice <- 
+          variazioni$`Codice del Comune associato alla variazione o nuovo codice Istat del Comune`[i]
+      }
     }
     
-    return(c(stringa, matches[1]))
+    return(list(
+      comune = ISTAT$`Denominazione in italiano`[
+        match(codice, ISTAT$`Codice Comune formato alfanumerico`)
+      ],
+      codice = codice
+    ))
   }
-
-  cl <- makeCluster(parallel::detectCores())
   
-  results <- t(parSapplyLB(cl, v, find_matches, v_ref = v_ref))
+  # Funzione che cerca il nome del comune nelle tabelle ISTAT
+  cerca_nome <- function(nome) {
+    
+    # Cerco il nome nei comuni attuali
+    matches <- which(
+      toupper(ISTAT$`Denominazione (Italiana e straniera)`) == nome
+    )
+    
+    if (length(matches) > 0) return(list(
+      comune = ISTAT$`Denominazione in italiano`[matches[1]],
+      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+    ))
+    
+    # Cerco il nome nei comuni attuali
+    matches <- which(
+      toupper(ISTAT$`Denominazione in italiano`) == nome
+    )
+    
+    if (length(matches) > 0) return(list(
+      comune = ISTAT$`Denominazione in italiano`[matches[1]],
+      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+    ))
+    
+    # Cerco il nome nei comuni variati,
+    # se lo trovo aggiorno il nome con il nome attuale
+    matches <- which(
+      toupper(variazioni$`Denominazione Comune`) == nome
+    )
+    
+    if (length(matches) > 0) return(comune_attuale(matches[1]))
+    
+    # Cerco nomi simili tra tutti i nomi possibili
+    distanze <- adist(
+      tutti_i_nomi, 
+      nome, 
+      ignore.case = TRUE
+    )
+    matches <- which(distanze == min(distanze))
+    
+    # Se non lo trovo avviso e restituisco NA
+    if (length(matches) == 0) {
+      warning("Comune ", nome, " non trovato negli elenchi ISTAT")
+      
+      return(list(
+        comune = NA,
+        codice = NA
+      ))
+    }
+    
+    # Se lo trovo avviso della corrispondenza trovata
+    message(nome, " corrisponde a ", tutti_i_nomi[matches[1]])
+    
+    if (matches[1] <= nrow(ISTAT)) return(list(
+      comune = ISTAT$`Denominazione in italiano`[matches[1]],
+      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+    ))
+    
+    if (matches[1] <= nrow(ISTAT) * 2) return(list(
+      comune = ISTAT$`Denominazione in italiano`[matches[1] - nrow(ISTAT)],
+      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1] - nrow(ISTAT)]
+    ))
+    
+    return(comune_attuale(matches[1] - nrow(ISTAT) * 2))
+    
+  }
   
-  stopCluster(cl)
+  risultato <- rbindlist(lapply(nomi_comuni, cerca_nome))
+  risultato$nome_originario <- nomi_comuni
   
-  results <- results[is.na(results[,2]) | results[,1] != results[,2],]
+  return(merge(DT, risultato, by.x = colonna_nome_comune, by.y = "nome_originario"))
   
-  return(results)
 }
 
-results <- find_best_matches(camera_2018$COMUNE, c(camera_2022$COMUNE, camera_2022_Aosta$COMUNE))
-
-results
+camera_2022_Aosta_copia <- aggiorna_comuni(camera_2022_Aosta, as.Date("2022-09-25"))
