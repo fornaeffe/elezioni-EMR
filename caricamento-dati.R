@@ -2,6 +2,7 @@ library(data.table)
 library(parallel)
 library(stringr)
 
+
 #### Base dati relativa ai collegi elettorali ####
 
 # TODO: verificare se serve davvero
@@ -143,6 +144,10 @@ estrai_data <- function(testo) {
 
 # Estraggo le date
 ISTAT_variazioni_pulito$DATA <- estrai_data(ISTAT_variazioni_pulito$`Provvedimento e Documento`)
+ISTAT_variazioni_pulito[
+  `Data decorrenza validità amministrativa` != "",
+  DATA := as.Date(`Data decorrenza validità amministrativa`, format="%d/%m/%Y")
+]
 
 # Ordino la tabella
 ISTAT_variazioni_pulito <- ISTAT_variazioni_pulito[order(DATA)]
@@ -200,10 +205,12 @@ ISTAT <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
 
 #### Unione ####
 aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
-
+  
   nomi_comuni <- unique(DT[,..colonna_nome_comune][[1]])
   
-  variazioni <- ISTAT_variazioni_pulito[DATA > data_elezione]
+  
+  # Considero solo le variazioni avvenute da poco prima l'elezione a oggi
+  variazioni <- ISTAT_variazioni_pulito[DATA > data_elezione - 180]
   
   tutti_i_nomi <- c(
     ISTAT$`Denominazione (Italiana e straniera)`,
@@ -234,33 +241,62 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
   # Funzione che cerca il nome del comune nelle tabelle ISTAT
   cerca_nome <- function(nome) {
     
-    # Cerco il nome nei comuni attuali
-    matches <- which(
-      toupper(ISTAT$`Denominazione (Italiana e straniera)`) == nome
+    cerca_nome_identico <- function(nome) {
+      # Cerco il nome nei comuni attuali
+      matches <- which(
+        toupper(ISTAT$`Denominazione (Italiana e straniera)`) == nome
+      )
+      
+      if (length(matches) > 0) return(list(
+        comune = ISTAT$`Denominazione in italiano`[matches[1]],
+        codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+      ))
+      
+      # Cerco il nome nei comuni attuali
+      matches <- which(
+        toupper(ISTAT$`Denominazione in italiano`) == nome
+      )
+      
+      if (length(matches) > 0) return(list(
+        comune = ISTAT$`Denominazione in italiano`[matches[1]],
+        codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+      ))
+      
+      # Cerco il nome nei comuni variati,
+      # se lo trovo aggiorno il nome con il nome attuale
+      matches <- which(
+        toupper(variazioni$`Denominazione Comune`) == nome
+      )
+      
+      if (length(matches) > 0) return(comune_attuale(matches[1]))
+      
+      return(NA)
+    }
+    
+    risultato <- cerca_nome_identico(nome)
+    
+    if (length(risultato) > 1) return (risultato)
+    
+    risultato <- cerca_nome_identico(
+      str_replace_all(
+        nome,
+        c(
+          "A'" = toupper("à"),
+          "E'" = toupper("è"),
+          "I'" = toupper("ì"),
+          "O'" = toupper("ò"),
+          "U'" = toupper("ù")
+        )
+      )
     )
     
-    if (length(matches) > 0) return(list(
-      comune = ISTAT$`Denominazione in italiano`[matches[1]],
-      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
-    ))
+    if(length(risultato) > 1) return (risultato)
     
-    # Cerco il nome nei comuni attuali
-    matches <- which(
-      toupper(ISTAT$`Denominazione in italiano`) == nome
-    )
+    # Controlla se il nome è da cambiare manualmente
+    if (nome == "MALE'") return(cerca_nome_identico(toupper("Malé")))
+    if (nome == "S+N JAN DI FASSA") return(cerca_nome_identico("SAN GIOVANNI DI FASSA"))
+    if (nome == "HONE") return(cerca_nome_identico(toupper("Hône")))
     
-    if (length(matches) > 0) return(list(
-      comune = ISTAT$`Denominazione in italiano`[matches[1]],
-      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
-    ))
-    
-    # Cerco il nome nei comuni variati,
-    # se lo trovo aggiorno il nome con il nome attuale
-    matches <- which(
-      toupper(variazioni$`Denominazione Comune`) == nome
-    )
-    
-    if (length(matches) > 0) return(comune_attuale(matches[1]))
     
     # Cerco nomi simili tra tutti i nomi possibili
     distanze <- adist(
@@ -304,4 +340,5 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
   
 }
 
-camera_2022_Aosta_copia <- aggiorna_comuni(camera_2022_Aosta, as.Date("2022-09-25"))
+camera_2022_copia <- aggiorna_comuni(camera_2022, as.Date("2022-09-25"))
+camera_2018_copia <- aggiorna_comuni(camera_2018, as.Date("2018-03-04"))
