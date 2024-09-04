@@ -41,7 +41,6 @@ data_elezione <- as.POSIXct("2024-11-17")
 
 ```{r distribuzione voti}
 #| include: false
-#| cache: true
 #### Importazione dati ####
 
 ##### Base dati #####
@@ -469,6 +468,51 @@ lista_elezione <- merge(
 
 ```
 
+```{r sondaggi}
+sondaggi <- read_xlsx("dati/liste.xlsx", "sondaggi")
+sondaggi$DATA <- as.POSIXct(sondaggi$DATA)
+
+astensione_base <- lista_elezione$PERCENTUALE[
+  lista_elezione$LISTA == "astensione" & 
+    lista_elezione$DATA == max(lista_elezione$DATA)
+]
+
+sondaggi <- rbindlist(tapply(
+  sondaggi,
+  interaction(sondaggi$SONDAGGIO, sondaggi$DATA),
+  function(df) {
+    if ("astensione" %in% df$LISTA) {
+      astensione <- df$PERCENTUALE[df$LISTA == "astensione"]
+    } else {
+      astensione <- astensione_base
+    }
+    
+    df$PERCENTUALE[df$LISTA != "astensione"] <- 
+      df$PERCENTUALE[df$LISTA != "astensione"] * (1 - astensione)
+    
+    return(df)
+    
+  }
+))
+
+sondaggi$LOG_P <- qlogis(sondaggi$PERCENTUALE)
+
+lista_elezione <- rbind(
+  lista_elezione,
+  data.frame(
+    ELEZIONE = sondaggi$SONDAGGIO,
+    LISTA = sondaggi$LISTA,
+    VOTI_LISTA = NA,
+    VOTI_LISTA_REG = NA,
+    PERCENTUALE = sondaggi$PERCENTUALE,
+    LOG_P = sondaggi$LOG_P,
+    DATA = sondaggi$DATA
+  )
+)
+
+```
+
+
 
 ```{r sigma}
 SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
@@ -516,7 +560,7 @@ liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 
 ```{r dati}
 #| include: false
-#| cache: true
+
 
 ##### Carico liste regionali #####
 
@@ -570,7 +614,7 @@ prov_lista <- prov_lista[order(prov_lista$PROVINCIA, prov_lista$LISTA),]
 prov_lista$VOTI_LISTA_PROV[prov_lista$LISTA == "DE PASCALE"] <-
   prov_lista$VOTI_LISTA_PROV[prov_lista$LISTA == "PARTITO DEMOCRATICO"]
 
-liste$DATA <- max(df_elezioni$DATA)
+# liste$DATA <- max(df_elezioni$DATA)
 prov_lista$DATA <- max(df_elezioni$DATA)
 
 ## END FIX
@@ -586,7 +630,7 @@ prov_lista <- merge(
 
 ```{r simula}
 #| include: false
-#| cache: true
+
 
 # delta_t <- data_elezione - max(df_elezioni$DATA)
 
@@ -968,7 +1012,6 @@ grafico_eletti <- function(lista) {
     )
   colori <- colorRampPalette(
     c(
-      "#000000",
       liste$COLORE[liste$LISTA == lista],
       "#FFFFFF"
     )
@@ -1228,57 +1271,6 @@ for (lista in liste$LISTA[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD
 ```
 
 
-### Probabilità di elezione in base alla posizione nel listino
-
-
-```{r plot_nmax}
-#| fig.width: 8
-#| fig-height: 8
-#| dpi: 100
-
-grafico_nmax <- function(lista, provincia = NA) {
-  if (is.na(provincia)) {
-    lp <- risultato$prov_lista
-  } else {
-    lp <- risultato$prov_lista[
-      risultato$prov_lista$PROVINCIA == provincia,
-    ]
-  }
-  
-  nmax <- factor(
-      lp$ELETTI[lp$LISTA == lista],
-      levels = 0:9
-    )
-  # nmax[is.na(nmax)] <- 4
-  colori <- c(hcl.colors(9), "#FFFFFF")
-  spineplot(
-    nmax ~ I(
-      lp$PERCENTUALE[
-        lp$LISTA == lista
-      ] *100
-    ),
-    breaks = 12,
-    col = colori,
-    yaxlabels = NA,
-    ylab = NA,
-    xlab = "Percentuale nella provincia",
-    main = paste0(
-      lista,
-      ifelse(is.na(provincia), "", paste0(" - ", provincia))
-    )
-  )
-  
-  legend(
-    "topleft",
-    legend = levels(nmax)[-1],
-    fill = rev(colori[-10]),
-    title = "Posizione"
-  )
-}
-
-grafico_nmax("ALLEANZA VERDI SINISTRA", "PARMA")
-
-```
 
 # Approfondimenti
 
