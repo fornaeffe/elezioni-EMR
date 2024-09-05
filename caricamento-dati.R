@@ -292,9 +292,10 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
 dati <- data.table(
   DATA = as.POSIXct(character(0)),
   ELEZIONE = character(0),
-  LISTA = character(0),
   COMUNE = character(0),
-  CODICE = character(0)
+  CODICE = character(0),
+  LISTA = character(0),
+  VOTI = numeric(0)
 )
 
 #### Camera 2018 ####
@@ -348,9 +349,10 @@ tryCatch(
       data.table(
         DATA = as.POSIXct(data_camera_2018),
         ELEZIONE = "camera 2018",
-        LISTA = camera_2018$LISTA,
         COMUNE = camera_2018$comune,
-        CODICE = camera_2018$codice
+        CODICE = camera_2018$codice,
+        LISTA = camera_2018$LISTA,
+        VOTI = camera_2018$VOTI_LISTA
       )
     )
   },
@@ -365,6 +367,56 @@ tryCatch(
 
 
 #### Camera 2022 ####
+
+data_camera_2022 <- "2022-09-25"
+
+tryCatch(
+  {
+    cat("\nDownload dei dati delle elezioni della Camera del 2022...\n")
+    camera_2022 <- scarica(
+      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
+      "Camera_Italia_LivComune.txt"
+    )
+    
+    
+    # Calcolo l'astensione
+    camera_2022 <- rbind(
+      camera_2022,
+      camera_2022[
+        ,
+        .(
+          VOTILISTA = ELETTORITOT - sum(VOTILISTA),
+          DESCRLISTA = "astensione"
+        ),
+        by = .(
+          COLLUNINOM,
+          COMUNE,
+          ELETTORITOT
+        )
+      ],
+      fill = TRUE
+    )
+    
+    # Aggiorno il nome dei comuni
+    camera_2022 <- aggiorna_comuni(camera_2022, as.Date(data_camera_2022))
+    
+    dati <- rbind(
+      dati,
+      data.table(
+        DATA = as.POSIXct(data_camera_2022),
+        ELEZIONE = "camera 2022",
+        COMUNE = camera_2022$comune,
+        CODICE = camera_2022$codice,
+        LISTA = camera_2022$DESCRLISTA,
+        VOTI = camera_2022$VOTILISTA
+      )
+    )
+  },
+  error = function(e) warning(
+    "Non sono riuscito a caricare i dati delle elezioni ",
+    "della Camera del 2018, a causa di questo errore: ", e
+  )
+)
 
 camera_2022 <- scarica(
   "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
