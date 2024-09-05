@@ -2,104 +2,71 @@ library(data.table)
 library(parallel)
 library(stringr)
 
+# Funzione per scaricare ed estrarre i files
+scarica <- function(
+    url,
+    internal_file_paths,
+    unzip = "internal",
+    encoding = "unknown"
+) {
+  # Preparo il nome del file temporaneo da scaricare
+  file_path <- tempfile(fileext = ".zip")
+  
+  # Scarico il file zip
+  download.file(url, file_path)
+  
+  # Estraggo i file
+  unzip(file_path, internal_file_paths, exdir = tempdir(), unzip = unzip)
+  
+  # Se mi interessa solo un file lo restituisco un data.table
+  if (length(internal_file_paths) == 1) {
+    return(
+      fread(
+        file.path(tempdir(), internal_file_paths), 
+        encoding = encoding
+      )
+    )
+  }
+  
+  # Se mi interessano più file restituisco una lista di data.tables
+  return(
+    lapply(
+      internal_file_paths,
+      function(internal_file_path) {
+        fread(
+          file.path(tempdir(), internal_file_path), 
+          encoding = encoding
+        )
+      }
+    )
+  )
+}
 
-#### Base dati relativa ai collegi elettorali ####
+#### Codici statistici e unità territoriali ####
 
-# TODO: verificare se serve davvero
-
-# Ottenuta da 
-# http://www.riformeistituzionali.gov.it/media/1367/proposta_commissione_13112020.zip
-# File Access da cui è stato estratto il csv
-
-# # Carico i dati
-# base_dati <- fread("dati/BaseDati_Proposta_Commissione.csv", na.strings = "")
-# 
-# # Rinomino le colonne per coerenza con le altre fonti
-# setnames(base_dati, c("DEN_PRO_CM20", "DEN_COM20"), c("PROVINCIA", "COMUNE"))
-# 
-# # Trasformo in maiuscolo per coerenza
-# base_dati$PROVINCIA <- toupper(base_dati$PROVINCIA)
-# base_dati$COMUNE <- toupper(base_dati$COMUNE)
-
-#### Camera 2018 ####
-
-# Preparo il nome del file temporaneo da scaricare
-file_path <- tempfile(pattern = "camera_2018", fileext = ".zip")
-
-# Scarico il file zip
-download.file(
-  "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20180304.zip",
-  file_path
-)
-
-# Estraggo il file con i risultati degli scrutini a livello comunale
-unzip(
-  file_path,
-  "Camera2018_livComune.txt",
-  exdir = tempdir()
-)
-
-# Leggo il file appena estratto e creo un data.table
-# Purtroppo il file è codificato male all'origine, penso,
-# e non penso ci si possa fare nulla...
-camera_2018 <- fread(
-  file.path(tempdir(), "Camera2018_livComune.txt"),
+ISTAT <- scarica(
+  "http://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unit%C3%A0-territoriali.zip",
+  file.path(
+    "Elenco-codici-statistici-e-denominazioni-delle-unità-territoriali",
+    "Codici-statistici-e-denominazioni-al-30_06_2024.csv"
+  ),
+  unzip = "unzip",
   encoding = "Latin-1"
 )
 
 
-#### Camera 2022 ####
-
-
-# Preparo il nome del file temporaneo da scaricare
-file_path <- tempfile(pattern = "camera_2022", fileext = ".zip")
-
-# Scarico il file zip
-download.file(
-  "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
-  file_path
-)
-
-# Estraggo il file con i risultati degli scrutini a livello comunale
-unzip(
-  file_path,
-  c("Camera_Italia_LivComune.txt",  "Camera_VAosta_LivComune.txt"),
-  exdir = tempdir()
-)
-
-# Leggo il file appena estratto e creo un data.table
-camera_2022 <- fread(file.path(tempdir(), "Camera_Italia_LivComune.txt"))
-camera_2022_Aosta <- fread(file.path(tempdir(), "Camera_VAosta_LivComune.txt"))
-
 #### Variazioni amministrative territoriali ####
 
-# https://www.istat.it/storage/codici-unita-amministrative/Variazioni%20amministrative%20e%20territoriali%20dal%201991.zip
-
-
-# Preparo il nome del file temporaneo da scaricare
-file_path <- tempfile(pattern = "ISTAT_var", fileext = ".zip")
-
-# Scarico il file zip
-download.file(
+ISTAT_variazioni <- scarica(
   "https://www.istat.it/storage/codici-unita-amministrative/Variazioni%20amministrative%20e%20territoriali%20dal%201991.zip",
-  file_path
+  file.path(
+    "Variazioni amministrative e territoriali dal 1991",
+    "Variazioni_amministrative_territoriali_dal_01011991.csv"
+  ),
+  unzip = "unzip",
+  encoding = "Latin-1"
 )
 
-internal_file_path <- file.path(
-  "Variazioni amministrative e territoriali dal 1991",
-  "Variazioni_amministrative_territoriali_dal_01011991.csv"
-)
-
-# Estraggo il file csv
-unzip(
-  file_path,
-  internal_file_path,
-  exdir = tempdir(),
-  unzip = "unzip"
-)
-
-# Leggo il file appena estratto e creo un data.table
-ISTAT_variazioni <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
 
 # Tengo solo le variazioni che mi interessano
 ISTAT_variazioni_pulito <- ISTAT_variazioni[
@@ -156,7 +123,10 @@ ISTAT_variazioni_pulito <- ISTAT_variazioni_pulito[order(DATA)]
 tabella <- ISTAT_variazioni_pulito[
   `Tipo variazione` %in% c("CS", "AQES"),
   .(.N),
-  by = .(`Provvedimento e Documento`, `Denominazione Comune associata alla variazione o nuova denominazione`)
+  by = .(
+    `Provvedimento e Documento`, 
+    `Denominazione Comune associata alla variazione o nuova denominazione`
+  )
 ]
 
 tabella <- tabella[N > 1,]
@@ -174,37 +144,11 @@ tabella <- tabella[N > 1,]
 
 if (nrow(tabella) > 0) warning("Alcuni comuni sono stati spezzettati")
 
-#### Codici statistici e unità territoriali ####
 
-# http://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unit%C3%A0-territoriali.zip
-
-# Preparo il nome del file temporaneo da scaricare
-file_path <- tempfile(pattern = "ISTAT", fileext = ".zip")
-
-# Scarico il file zip
-download.file(
-  "http://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unit%C3%A0-territoriali.zip",
-  file_path
-)
-
-internal_file_path <- file.path(
-  "Elenco-codici-statistici-e-denominazioni-delle-unità-territoriali",
-  "Codici-statistici-e-denominazioni-al-30_06_2024.csv"
-)
-
-# Estraggo il file csv
-unzip(
-  file_path,
-  internal_file_path,
-  exdir = tempdir(),
-  unzip = "unzip"
-)
-
-# Leggo il file appena estratto e creo un data.table
-ISTAT <- fread(file.path(tempdir(), internal_file_path), encoding = "Latin-1")
-
-#### Unione ####
+# Funzione che aggiorna i nomi dei comuni e aggiunge i codici
 aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
+  
+  cat("Uniformo e aggiorno i nomi dei comuni...\n")
   
   nomi_comuni <- unique(DT[,..colonna_nome_comune][[1]])
   
@@ -238,40 +182,41 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
     ))
   }
   
-  # Funzione che cerca il nome del comune nelle tabelle ISTAT
-  cerca_nome <- function(nome) {
+  # Funzione che cerca un nome di comune scritto nello stesso modo
+  cerca_nome_identico <- function(nome) {
+    # Cerco il nome nei comuni attuali
+    matches <- which(
+      toupper(ISTAT$`Denominazione (Italiana e straniera)`) == nome
+    )
     
-    cerca_nome_identico <- function(nome) {
-      # Cerco il nome nei comuni attuali
-      matches <- which(
-        toupper(ISTAT$`Denominazione (Italiana e straniera)`) == nome
-      )
-      
-      if (length(matches) > 0) return(list(
-        comune = ISTAT$`Denominazione in italiano`[matches[1]],
-        codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
-      ))
-      
-      # Cerco il nome nei comuni attuali
-      matches <- which(
-        toupper(ISTAT$`Denominazione in italiano`) == nome
-      )
-      
-      if (length(matches) > 0) return(list(
-        comune = ISTAT$`Denominazione in italiano`[matches[1]],
-        codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
-      ))
-      
-      # Cerco il nome nei comuni variati,
-      # se lo trovo aggiorno il nome con il nome attuale
-      matches <- which(
-        toupper(variazioni$`Denominazione Comune`) == nome
-      )
-      
-      if (length(matches) > 0) return(comune_attuale(matches[1]))
-      
-      return(NA)
-    }
+    if (length(matches) > 0) return(list(
+      comune = ISTAT$`Denominazione in italiano`[matches[1]],
+      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+    ))
+    
+    # Cerco il nome nei comuni attuali
+    matches <- which(
+      toupper(ISTAT$`Denominazione in italiano`) == nome
+    )
+    
+    if (length(matches) > 0) return(list(
+      comune = ISTAT$`Denominazione in italiano`[matches[1]],
+      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+    ))
+    
+    # Cerco il nome nei comuni variati,
+    # se lo trovo aggiorno il nome con il nome attuale
+    matches <- which(
+      toupper(variazioni$`Denominazione Comune`) == nome
+    )
+    
+    if (length(matches) > 0) return(comune_attuale(matches[1]))
+    
+    return(NA)
+  }
+  
+  # Funzione che cerca il nome del comune anche scritto in modo diverso
+  cerca_nome <- function(nome) {
     
     risultato <- cerca_nome_identico(nome)
     
@@ -317,7 +262,7 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
     }
     
     # Se lo trovo avviso della corrispondenza trovata
-    message(nome, " corrisponde a ", tutti_i_nomi[matches[1]])
+    cat(nome, "corrisponde a", tutti_i_nomi[matches[1]], "\n")
     
     if (matches[1] <= nrow(ISTAT)) return(list(
       comune = ISTAT$`Denominazione in italiano`[matches[1]],
@@ -336,9 +281,139 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
   risultato <- rbindlist(lapply(nomi_comuni, cerca_nome))
   risultato$nome_originario <- nomi_comuni
   
+  cat("\nTerminato l'aggiornamento dei nomi dei comuni\n")
+  
   return(merge(DT, risultato, by.x = colonna_nome_comune, by.y = "nome_originario"))
   
 }
 
-camera_2022_copia <- aggiorna_comuni(camera_2022, as.Date("2022-09-25"))
-camera_2018_copia <- aggiorna_comuni(camera_2018, as.Date("2018-03-04"))
+#### Inizializzo data.table dati ####
+
+dati <- data.table(
+  DATA = as.POSIXct(character(0)),
+  ELEZIONE = character(0),
+  LISTA = character(0),
+  COMUNE = character(0),
+  CODICE = character(0)
+)
+
+#### Camera 2018 ####
+
+data_camera_2018 <- "2018-03-04"
+
+tryCatch(
+  {
+    cat("\nDownload dei dati delle elezioni della Camera del 2018...\n")
+    camera_2018 <- scarica(
+      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20180304.zip",
+      "Camera2018_livComune.txt",
+      encoding = "Latin-1"
+    )
+    
+    # Poiché VOTI_LISTA è NA per la circoscrizione AOSTA, copio in quella 
+    # colonna i voti per il candidato (Nella circoscrizione Aosta ci sono solo 
+    # candidati uninominali)
+    camera_2018[
+      CIRCOSCRIZIONE == "AOSTA",
+      VOTI_LISTA := VOTI_CANDIDATO
+    ]
+    
+    # Calcolo l'astensione
+    astensione <- camera_2018[
+      ,
+      .(
+        VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
+        LISTA = "astensione"
+      ),
+      by = .(
+        CIRCOSCRIZIONE,
+        COLLEGIOPLURINOMINALE,
+        COLLEGIOUNINOMINALE,
+        COMUNE,
+        ELETTORI,
+        VOTANTI,
+        SCHEDE_BIANCHE
+      )
+    ]
+    camera_2018 <- rbind(camera_2018, astensione, fill = TRUE)
+    
+    
+    # Aggiorno il nome dei comuni
+    camera_2018 <- aggiorna_comuni(camera_2018, as.Date(data_camera_2018))
+    
+    
+    
+    dati <- rbind(
+      dati,
+      data.table(
+        DATA = as.POSIXct(data_camera_2018),
+        ELEZIONE = "camera 2018",
+        LISTA = camera_2018$LISTA,
+        COMUNE = camera_2018$comune,
+        CODICE = camera_2018$codice
+      )
+    )
+  },
+  error = function(e) warning(
+    "Non sono riuscito a caricare i dati delle elezioni ",
+    "della Camera del 2018, a causa di questo errore: ", e
+  )
+)
+
+
+
+
+
+#### Camera 2022 ####
+
+camera_2022 <- scarica(
+  "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
+  c(Italia = "Camera_Italia_LivComune.txt",  Aosta = "Camera_VAosta_LivComune.txt")
+)
+
+camera_2022$Italia <- aggiorna_comuni(camera_2022$Italia, as.Date("2022-09-25"))
+camera_2022$Aosta <- aggiorna_comuni(camera_2022$Aosta, as.Date("2022-09-25"))
+
+#### Regionali ####
+
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20240310.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20240421.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20240609.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20230212.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20211003.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200126.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200920.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20190210.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20190324.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20190526.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20191027.zip
+# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20180304.zip
+
+date_regionali <- c(
+  "20240310",
+  "20240421",
+  "20240609",
+  "20230212",
+  "20211003",
+  "20200126",
+  "20200920",
+  "20190210",
+  "20190324",
+  "20190526",
+  "20191027",
+  "20180304"
+)
+
+lapply(
+  date_regionali,
+  function(data_elezione) {
+    regionale <- scarica(
+      paste0(
+        "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-",
+        data_elezione,
+        ".zip"
+      ),
+      paste0("regionali-", data_elezione, ".txt")
+    )
+  }
+)
