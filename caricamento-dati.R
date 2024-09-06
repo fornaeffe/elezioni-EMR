@@ -414,58 +414,157 @@ tryCatch(
   },
   error = function(e) warning(
     "Non sono riuscito a caricare i dati delle elezioni ",
-    "della Camera del 2018, a causa di questo errore: ", e
+    "della Camera del 2022, a causa di questo errore: ", e
   )
 )
 
-camera_2022 <- scarica(
-  "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
-  c(Italia = "Camera_Italia_LivComune.txt",  Aosta = "Camera_VAosta_LivComune.txt")
-)
 
-camera_2022$Italia <- aggiorna_comuni(camera_2022$Italia, as.Date("2022-09-25"))
-camera_2022$Aosta <- aggiorna_comuni(camera_2022$Aosta, as.Date("2022-09-25"))
+#### Regionali 2020 ####
 
-#### Regionali ####
-
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20240310.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20240421.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20240609.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20230212.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20211003.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200126.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200920.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20190210.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20190324.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20190526.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20191027.zip
-# https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20180304.zip
-
-date_regionali <- c(
-  "20240310",
-  "20240421",
-  "20240609",
-  "20230212",
-  "20211003",
-  "20200126",
-  "20200920",
-  "20190210",
-  "20190324",
-  "20190526",
-  "20191027",
-  "20180304"
-)
-
-lapply(
-  date_regionali,
-  function(data_elezione) {
-    regionale <- scarica(
-      paste0(
-        "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-",
-        data_elezione,
-        ".zip"
-      ),
-      paste0("regionali-", data_elezione, ".txt")
+tryCatch(
+  {
+    cat("\nDownload dei dati delle elezioni regionali del 2020...\n")
+    regionali_2020 <- scarica(
+      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200126.zip",
+      "regionali-20200126.txt"
     )
-  }
+    
+    
+    # Calcolo l'astensione
+    regionali_2020 <- rbind(
+      regionali_2020,
+      regionali_2020[
+        ,
+        .(
+          VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
+          LISTA = "astensione"
+        ),
+        by = .(
+          REGIONE,
+          CIRCOSCRIZIONE,
+          COMUNE,
+          ELETTORI
+        )
+      ],
+      fill = TRUE
+    )
+    
+    # Aggiorno il nome dei comuni
+    regionali_2020 <- aggiorna_comuni(regionali_2020, as.Date("2020-01-26"))
+    
+    dati <- rbind(
+      dati,
+      data.table(
+        DATA = as.POSIXct("2020-01-26"),
+        ELEZIONE = "regionali 2020",
+        COMUNE = regionali_2020$comune,
+        CODICE = regionali_2020$codice,
+        LISTA = regionali_2020$LISTA,
+        VOTI = regionali_2020$VOTI_LISTA
+      )
+    )
+  },
+  error = function(e) warning(
+    "Non sono riuscito a caricare i dati delle elezioni ",
+    "regionali del 2020, a causa di questo errore: ", e
+  )
+)
+
+#### Europee 2019 ####
+
+tryCatch(
+  {
+    cat("\nDownload dei dati delle elezioni europee del 2019...\n")
+    europee_2019 <- scarica(
+      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/europee/europee-20190526.zip",
+      "europee-20190526.txt",
+      encoding = "Latin-1"
+    )
+    
+    
+    # Calcolo l'astensione
+    europee_2019 <- rbind(
+      europee_2019,
+      europee_2019[
+        ,
+        .(
+          VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
+          LISTA = "astensione"
+        ),
+        by = .(
+          COMUNE,
+          ELETTORI
+        )
+      ],
+      fill = TRUE
+    )
+    
+    # Aggiorno il nome dei comuni
+    europee_2019 <- aggiorna_comuni(europee_2019, as.Date("2019-05-26"))
+    
+    dati <- rbind(
+      dati,
+      data.table(
+        DATA = as.POSIXct("2019-05-26"),
+        ELEZIONE = "europee 2019",
+        COMUNE = europee_2019$comune,
+        CODICE = europee_2019$codice,
+        LISTA = europee_2019$LISTA,
+        VOTI = europee_2019$VOTI_LISTA
+      )
+    )
+  },
+  error = function(e) warning(
+    "Non sono riuscito a caricare i dati delle elezioni ",
+    "europee del 2019, a causa di questo errore: ", e
+  )
+)
+
+#### Europee 2024 ####
+
+tryCatch(
+  {
+    cat("\nDownload dei dati delle elezioni europee del 2024...\n")
+    europee_2024 <- fread(
+      "https://elezioni.interno.gov.it/daithome/documenti/Europee_Scrutini_ITALIA_20240609.csv",
+      encoding = "Latin-1"
+    )
+    
+    
+    # Calcolo l'astensione
+    europee_2024 <- rbind(
+      europee_2024,
+      europee_2024[
+        ,
+        .(
+          VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
+          DESCR_LISTA = "astensione"
+        ),
+        by = .(
+          COMUNE,
+          ELETTORI
+        )
+      ],
+      fill = TRUE
+    )
+    
+    # Aggiorno il nome dei comuni
+    europee_2024 <- aggiorna_comuni(europee_2024, as.Date("2024-06-08"))
+    
+    dati <- rbind(
+      dati,
+      data.table(
+        DATA = as.POSIXct("2024-06-08"),
+        ELEZIONE = "europee 2024",
+        COMUNE = europee_2024$comune,
+        CODICE = europee_2024$codice,
+        LISTA = europee_2024$DESCR_LISTA,
+        VOTI = europee_2024$VOTI_LISTA
+      )
+    )
+  },
+  error = function(e) warning(
+    "Non sono riuscito a caricare i dati delle elezioni ",
+    "europee del 2024, a causa di questo errore: ", e
+  )
 )
