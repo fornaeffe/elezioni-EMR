@@ -1,6 +1,7 @@
 library(shiny)
 library(bslib)
 library(editbl)
+library(tibble)
 
 # Define UI ----
 ui <- fluidPage(
@@ -24,16 +25,20 @@ ui <- fluidPage(
 
 # Define server logic ----
 server <- function(input, output) {
-  liste <- data.frame(
+  liste <- tibble(
     LISTA = "astensione",
-    COALIZIONE = NA,
-    COLORE = NA
+    COALIZIONE = as.character(NA),
+    COLORE = as.character(NA)
   )
   
-  modifiedData <- eDT(id = "liste", data = liste)
+  modifiedData <- eDT(
+    id = "liste", 
+    data = liste
+  )
   
   observe({
-    print(modifiedData$result())
+    liste <- modifiedData$result()
+    print(liste)
   })
 }
 
