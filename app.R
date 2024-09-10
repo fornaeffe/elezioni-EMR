@@ -25,6 +25,23 @@ ui <- fluidPage(
 
 # Define server logic ----
 server <- function(input, output) {
+  
+  # Se non sono ancora stati scaricati dati, li scarica
+  # TODO: verificare se serve un indicatore di avanzamento
+  # TODO: aggiungere un pulsante che forza l'aggiornamento dei dati
+  if (!file.exists("dati/dati.RData")) {
+    
+    # Creo un nuovo ambiente in modo da non riempire il server di oggetti
+    # inutili
+    myEnv <- new.env()
+    
+    source("caricamento-dati.R", local = myEnv)
+  }
+  
+  # Carica i dati
+  load("dati/dati.RData")
+  
+  # TODO: verifica se esistono già degli scenari salvati
   liste <- tibble(
     LISTA = "astensione",
     COALIZIONE = as.character(NA),
@@ -43,7 +60,6 @@ server <- function(input, output) {
   
   observe({
     liste <- modifiedData$state()
-    print(liste)
   })
 }
 
