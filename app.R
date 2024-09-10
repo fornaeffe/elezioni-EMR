@@ -2,6 +2,7 @@ library(shiny)
 library(bslib)
 library(editbl)
 library(tibble)
+library(data.table)
 
 # Define UI ----
 ui <- fluidPage(
@@ -40,6 +41,13 @@ server <- function(input, output) {
   
   # Carica i dati
   load("dati/dati.RData")
+  
+  # Tiene solo i dati dell'Emilia-Romagna
+  setkey(dati, CODICE_REGIONE, DATA, ELEZIONE, LISTA)
+  dati <- dati[.(8)]
+  
+  # Elenca le liste nelle passate elezioni
+  liste_passate <- unique(dati[, c("DATA", "ELEZIONE", "LISTA")])
   
   # TODO: verifica se esistono già degli scenari salvati
   liste <- tibble(
