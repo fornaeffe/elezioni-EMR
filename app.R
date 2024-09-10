@@ -8,6 +8,8 @@ library(data.table)
 ui <- fluidPage(
   titlePanel("Simulatore delle elezioni regionali dell'Emilia-Romagna"),
   
+  # TODO: inserimento sondaggi
+  
   # Pulsante salva scenario e carica scenario
   
   # Tabella di aggiunta delle liste
@@ -49,6 +51,7 @@ server <- function(input, output) {
   # Elenca le liste nelle passate elezioni
   liste_passate <- unique(dati[, c("DATA", "ELEZIONE", "LISTA")])
   
+  # Prepara una tibble con l'elenco delle liste alle prossime elezioni
   # TODO: verifica se esistono già degli scenari salvati
   liste <- tibble(
     LISTA = "astensione",
