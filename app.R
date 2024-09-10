@@ -33,11 +33,16 @@ server <- function(input, output) {
   
   modifiedData <- eDT(
     id = "liste", 
-    data = liste
+    data = liste,
+    options = list(
+      paging = FALSE, 
+      dom = "Brt",
+      buttons = list("add", "undo", "redo")
+    )
   )
   
   observe({
-    liste <- modifiedData$result()
+    liste <- modifiedData$state()
     print(liste)
   })
 }
