@@ -630,6 +630,9 @@ dati <- dati[
   )
 ]
 
+# Tiene solo i dati dell'Emilia-Romagna
+dati <- dati[CODICE_REGIONE == 8]
+
 # Salvo il file
 save(dati, file = "dati/dati.RData")
 
