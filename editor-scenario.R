@@ -77,8 +77,11 @@ matrice_liste <- data_edit(
   title = "Corrispondenza tra liste passate e future",
   viewer = "browser"
 )
+
+# TODO: check righe a somma zero
+
 # Fix formato data
 matrice_liste$DATA <- as.POSIXct(matrice_liste$DATA)
 setkey(matrice_liste, DATA, ELEZIONE, LISTA)
 
-save(liste, matrice_liste, file = paste0("scenari/", scenario, ".RData"))
+save(liste, matrice_liste, file = file_scenario)

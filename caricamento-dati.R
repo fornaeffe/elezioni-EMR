@@ -1,6 +1,8 @@
 library(data.table)
 library(stringr)
 
+# TODO: trasformare le coppie CODICE/NOME in factors
+
 # Funzione per scaricare ed estrarre i files
 scarica <- function(
     url,

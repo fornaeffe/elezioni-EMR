@@ -35,395 +35,87 @@ library(parallel)
 library(kableExtra)
 library(zoo)
 
+scenario <- "base"
+
 data_elezione <- as.POSIXct("2024-11-17")
 
 ```
 
-```{r distribuzione voti}
-#| include: false
-#| cache: true
-#### Importazione dati ####
+```{r caricamento}
 
-##### Base dati #####
-importa_dati <- function() {
-  
-  # Carico i dati
-  base_dati <- fread("dati/BaseDati_Proposta_Commissione.csv", na.strings = "")
-  
-  # Rinomino le colonne per coerenza con le altre fonti
-  setnames(base_dati, c("DEN_PRO_CM20", "DEN_COM20"), c("PROVINCIA", "COMUNE"))
-  
-  # Trasformo in maiuscolo per coerenza
-  base_dati$PROVINCIA <- toupper(base_dati$PROVINCIA)
-  base_dati$COMUNE <- toupper(base_dati$COMUNE)
-  
-  # Ottengo l'elenco delle province
-  province <- base_dati[, sum(POP_2011), by = PROVINCIA]
-  
-  # Ottengo l'elenco dei comuni
-  comuni <- unique(base_dati[, c("PROVINCIA", "COMUNE")])
-  
-  ##### Politiche 2018 #####
-  
-  # Carico i dati delle elezioni politiche del 2018
-  camera_2018 <- read.csv2(
-    "dati/2018/camera-20180304_2.txt",
-    fileEncoding = "utf-8"
-  )
-  
-  # Collego ciascun collegio uninominale alla provincia di riferimento
-  # TODO: sarebbe più opportuno svolgere questa operazione comune per comune,
-  # ma ci sono troppe differenze tra i nomi dei comuni nei dati delle politiche
-  # 2018 e i nomi dei comuni nella base dati
-  camera_2018$COMUNE_COLLEGIO <- str_remove(camera_2018$COLLEGIOUNINOMINALE, "\\A[0-9]{2} (- )?")
-  camera_2018$COMUNE_COLLEGIO <- str_remove(camera_2018$COMUNE_COLLEGIO, " - .*\\Z")
-  camera_2018$COMUNE_COLLEGIO <- str_remove(camera_2018$COMUNE_COLLEGIO, " AREA STATISTICA .*\\Z")
-  
-  camera_2018 <- merge(
-    camera_2018,
-    comuni,
-    by.x = "COMUNE_COLLEGIO",
-    by.y = "COMUNE",
-    all.x = TRUE
-  )
-  
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == ""] <- "AOSTA"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "BOLZANO/BOZEN"] <- "BOLZANO"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "BRESSANONE/BRIXEN"] <- "BOLZANO"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "CANT+"] <- "COMO"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "CORIGLIANO CALABRO"] <- "COSENZA"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "FORL¦"] <- "FORLI'-CESENA"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "MERANO/MERAN"] <- "BOLZANO"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "NARDÊ"] <- "LECCE"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "PATERNÊ"] <- "CATANIA"
-  camera_2018$PROVINCIA[camera_2018$COMUNE_COLLEGIO == "SAN DONA' DI PIAVE"] <- "VENEZIA"
-  
-  # Checks
-  # TO DO: trasformare in un controllo che innesca un errore
-  setdiff(unique(camera_2018$PROVINCIA), province$PROVINCIA)
-  sum(is.na(camera_2018$PROVINCIA))
-  
-  
-  ##### Politiche 2022 #######
-  
-  # Carico l'anagrafica dei comuni e la formatto coerentemente con gli altri dati
-  anagrafica_comuni <- read.csv("dati/2022/camera-italia-comune_anagrafica.csv")
-  anagrafica_comuni <- anagrafica_comuni[, c(
-    "codice",
-    "desc_com",
-    "desc_prov",
-    "desc_circ",
-    "ele_t",
-    "vot_t"
-  )]
-  names(anagrafica_comuni) <- c(
-    "codice",
-    "COMUNE",
-    "PROVINCIA",
-    "CIRCOSCRIZIONE",
-    "ELETTORI",
-    "VOTANTI"
-  )
-  
-  # Carico i dati elettorali per comune
-  camera_2022 <- read.csv("dati/2022/camera-italia-comune.csv")
-  
-  # Aggiungo i dati relativi ai comuni
-  camera_2022 <- merge(
-    camera_2022,
-    anagrafica_comuni
-  )
-  
-  # Rinomino le colonne
-  names(camera_2022)[names(camera_2022) == "desc_lis"] <- "LISTA"
-  names(camera_2022)[names(camera_2022) == "voti"] <- "VOTI_LISTA"
-  names(camera_2022)[names(camera_2022) == "cogn"] <- "COGNOME"
-  names(camera_2022)[names(camera_2022) == "nome"] <- "NOME"
-  
-  # Rinomino alcune province, per coerenza
-  camera_2022$PROVINCIA[camera_2022$PROVINCIA == "REGGIO NELL' EMILIA"] <- "REGGIO NELL'EMILIA"
-  camera_2022$PROVINCIA[camera_2022$PROVINCIA == "MASSA-CARRARA"] <- "MASSA CARRARA"
-  
-  
-  # Distribuisco i voti al solo candidato proporzionalmente tra le liste
-  # che lo sostengono
-  camera_2022 <- merge(
-    camera_2022,
-    aggregate(
-      VOTI_LISTA ~
-        codice +
-        COGNOME +
-        NOME,
-      camera_2022,
-      sum
-    ),
-    by = c("codice", "COGNOME", "NOME"),
-    suffixes = c("", "_TOT")
-  )
-  
-  camera_2022$VOTI_LISTA <- 
-    camera_2022$VOTI_LISTA +
-    camera_2022$voti_solo_can * 
-    camera_2022$VOTI_LISTA / camera_2022$VOTI_LISTA_TOT
-  
-  
-  camera_2022 <- camera_2022[,c(
-    "CIRCOSCRIZIONE",
-    "PROVINCIA",
-    "COMUNE",
-    "ELETTORI",
-    "VOTANTI",
-    "COGNOME",
-    "NOME",
-    "LISTA",
-    "VOTI_LISTA"
-  )]
-  
-  
-  
-  ###### Trovo la regione #######
-  
-  camera_2018$REGIONE <- str_remove(camera_2018$CIRCOSCRIZIONE, " [0-9]\\Z")
-  camera_2018$REGIONE <- str_remove(camera_2018$REGIONE, "/.*")
-  camera_2018$ELEZIONE <- "camera_2018"
-  
-  camera_2022$REGIONE <- str_remove(camera_2022$CIRCOSCRIZIONE, " [0-9]\\Z")
-  camera_2022$REGIONE <- str_remove(camera_2022$REGIONE, "/.*")
-  camera_2022$ELEZIONE <- "camera_2022"
-  
-  ##### Amministrative #####
-  
-  lista_files <- list.files("dati/eur_reg")
-  
-  lista_dataframes <- lapply(
-    paste0("dati/eur_reg/", lista_files),
-    read.csv2,
-    fileEncoding = "utf-8"
-  )
-  
-  lista_dataframes <- mapply(
-    function(df, nome_file) {
-      names(df) <- toupper(names(df))
-      if (is.null(df$COGNOME)) df$COGNOME <- NA
-      if (is.null(df$NOME)) df$NOME <- NA
-      names(df)[names(df) == "VOTILISTA"] <- "VOTI_LISTA"
-      df <- df[,c(
-        "REGIONE",
-        "PROVINCIA",
-        "COMUNE",
-        "ELETTORI",
-        "VOTANTI",
-        "COGNOME",
-        "NOME",
-        "LISTA",
-        "VOTI_LISTA"
-      )]
-      df$ELEZIONE <- nome_file
-      df
-    },
-    df = lista_dataframes,
-    nome_file = lista_files,
-    SIMPLIFY = FALSE
-  )
-  
-  amministrative <- rbindlist(lista_dataframes)
-  lista_dataframes <- NULL
-  
-  # Rinomino alcune province
-  amministrative$PROVINCIA[amministrative$PROVINCIA == "REGGIO NELL' EMILIA"] <- "REGGIO NELL'EMILIA"
-  amministrative$PROVINCIA[amministrative$PROVINCIA == "MASSA-CARRARA"] <- "MASSA CARRARA"
-  
-  # Checks
-  # TO DO: trasformare in un controllo che innesca un errore
-  setdiff(unique(amministrative$PROVINCIA), province$PROVINCIA)
-  
-  
-  ##### Unisco i dati #####
-  
-  comuni_liste_elezioni <- rbindlist(
-    lapply(
-      list(
-        amministrative,
-        camera_2018,
-        camera_2022
-      ),
-      function(df) df[, c(
-        "REGIONE",
-        "PROVINCIA",
-        "COMUNE",
-        "ELETTORI",
-        "VOTANTI",
-        "LISTA",
-        "VOTI_LISTA",
-        "ELEZIONE"
-      )]
-    )
-  )
-  
-  
-  ###### Calcolo astensione ######
-  
-  calcola_astensione <- function(df) {
-    astensione <- aggregate(
-      VOTI_LISTA ~
-        REGIONE +
-        PROVINCIA +
-        COMUNE +
-        ELETTORI +
-        VOTANTI +
-        ELEZIONE,
-      df,
-      sum
-    )
-    
-    astensione$LISTA <- "astensione"
-    astensione$VOTI_LISTA <- astensione$ELETTORI - astensione$VOTI_LISTA
-    
-    astensione
-  }
-  
-  comuni_liste_elezioni <- rbind(
-    comuni_liste_elezioni,
-    calcola_astensione(comuni_liste_elezioni)
-  )
-  
-  province_liste_elezioni <- aggregate(
-    VOTI_LISTA ~
-      REGIONE +
-      PROVINCIA +
-      LISTA +
-      ELEZIONE,
-    comuni_liste_elezioni,
-    sum
-  )
-  
-  ##### Filtro (solo Emilia-Romagna) #####
-  
-  dati_precedenti <- province_liste_elezioni[province_liste_elezioni$REGIONE == "EMILIA-ROMAGNA", ]
-  province <- province[province$PROVINCIA %in% dati_precedenti$PROVINCIA, ]
-  
-  ##### Dati Europee 2024 ####
-  # Workaround finché non arriveranno gli open data
-  
-  e24_prov_liste <- read_xlsx("dati/liste.xlsx", "europee")
-  
-  e24_prov_liste$REGIONE = "EMILIA_ROMAGNA"
-  e24_prov_liste$ELEZIONE = "europee2024"
-  
-  e24_prov <- aggregate(
-    VOTI_LISTA ~
-      REGIONE +
-      PROVINCIA +
-      ELEZIONE,
-    e24_prov_liste,
-    sum
-  )
-  
-  e24_prov <- merge(
-    e24_prov,
-    read_xlsx("dati/popolazione.xlsx")
-  )
-  
-  e24_prov$VOTI_LISTA <- e24_prov$ELETTORI - e24_prov$VOTI_LISTA
-  e24_prov$LISTA <- "astensione"
-  e24_prov$ELETTORI <- NULL
-  
-  dati_precedenti <- rbind(
-    dati_precedenti,
-    e24_prov_liste,
-    e24_prov
-  )
-  
-  return(list(province = province, dati_precedenti = dati_precedenti))
-}
+# Carico i dati
+load("dati/dati.RData")
 
-dati <- importa_dati()
+# Carico lo scenario
+load(paste0("scenari/", scenario, ".RData"))
 
-prov_lista_elezione <- dati$dati_precedenti
-province <- dati$province
+elezioni <- unique(dati[,.(DATA, ELEZIONE)])
+
 ```
 
 
+
 ```{r corrispondenza}
-# Questo è servito per esportare i nomi delle liste
-write.csv2(
-  dati$prov_lista_elezione[!duplicated(dati$prov_lista_elezione$LISTA), ],
-  "_output/liste_precedenti_elezioni.csv",
-  fileEncoding = "utf-8"
-)
 
 ##### Corrispondenza liste - aree #####
 
-# Carico la tabella di corrispondenza tra liste e partiti, e la appiattisco
-
-corrispondenza_liste <- as.data.table(read_xlsx("dati/corrispondenza_liste.xlsx"))
-corrispondenza_liste[is.na(corrispondenza_liste)] <- 0
-
+# Appiattisco la matrice di corrispondenza tra liste precedenti e attuali
+setnames(matrice_liste, "LISTA", "LISTA_ORIGINALE")
 corrispondenza_liste <- melt(
-  corrispondenza_liste,
-  c("LISTA_ORIGINALE", "ELEZIONE"),
+  matrice_liste,
+  c("DATA", "ELEZIONE", "LISTA_ORIGINALE"),
   variable.name = "LISTA",
   value.name = "FATTORE"
 )
 
-corrispondenza_liste <- corrispondenza_liste[corrispondenza_liste$FATTORE > 0, ]
+# Rimuovo le righe inutili
+corrispondenza_liste <- corrispondenza_liste[FATTORE != 0]
 
+# Normalizzo
+setkey(corrispondenza_liste, ELEZIONE, LISTA_ORIGINALE, LISTA)
+corrispondenza_liste[
+  , 
+  FATTORE := FATTORE / sum(FATTORE), 
+  by=.(ELEZIONE, LISTA_ORIGINALE)
+]
 
-# Unisco questa ai dati precedenti, e calcolo i voti per le nuove liste
+# Riassumo i dati per provincia
+prov_lista_elezione <- dati[
+  , 
+  .(VOTI = sum(VOTI)), 
+  keyby = .(PROVINCIA, LISTA, ELEZIONE)
+]
+setnames(prov_lista_elezione, "LISTA", "LISTA_ORIGINALE")
 
-names(prov_lista_elezione)[names(prov_lista_elezione) == "LISTA"] <- "LISTA_ORIGINALE"
-
-corrispondenza_liste$ELEZIONE <- NULL
-
+# Individuo le liste corrispondenti, e calcolo i voti per le nuove liste
 prov_lista_elezione <- merge(
   prov_lista_elezione,
   corrispondenza_liste,
   allow.cartesian = TRUE
 )
 
-prov_lista_elezione$VOTI_LISTA <- prov_lista_elezione$VOTI_LISTA * prov_lista_elezione$FATTORE
+prov_lista_elezione[, VOTI := VOTI * FATTORE]
 
-prov_lista_elezione <- aggregate(
-  VOTI_LISTA ~ PROVINCIA + ELEZIONE + LISTA,
-  prov_lista_elezione,
-  sum
-)
+prov_lista_elezione <- prov_lista_elezione[
+  ,
+  .(VOTI = sum(VOTI)),
+  keyby = .(PROVINCIA, LISTA, ELEZIONE)
+]
 ```
 
 
 ```{r serie storica}
+# Calcolo le percentuali per ciascuna provincia e ciascuna elezione
+prov_lista_elezione[
+  ,
+  PERCENTUALE := VOTI / sum(VOTI),
+  by = .(PROVINCIA, ELEZIONE)
+]
 
-elezioni <- unique(prov_lista_elezione$ELEZIONE)
+# Ne calcolo il logit
+prov_lista_elezione[, LOGIT_P := qlogis(PERCENTUALE)]
 
-date_elezioni <- sapply(elezioni, function(x) {
-  if (x == "camera_2018") return(as.POSIXct("2018-03-04"))
-  
-  if (x == "camera_2022") return(as.POSIXct("2022-09-25"))
-  
-  if (x == "europee2024") return(as.POSIXct("2024-06-09"))
-  
-  return(as.POSIXct(substr(x, nchar(x)-11, nchar(x)-4), format = "%Y%m%d"))
-})
-
-df_elezioni <- data.frame(ELEZIONE = elezioni, DATA = as.POSIXct(date_elezioni))
-
-
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  aggregate(
-    VOTI_LISTA ~ PROVINCIA + ELEZIONE,
-    prov_lista_elezione, 
-    sum
-  ),
-  by = c("PROVINCIA", "ELEZIONE"),
-  suffixes = c("", "_PROV")
-)
-
-prov_lista_elezione$PERCENTUALE <-
-  prov_lista_elezione$VOTI_LISTA / prov_lista_elezione$VOTI_LISTA_PROV
-
-prov_lista_elezione$LOG_P <- qlogis(prov_lista_elezione$PERCENTUALE)
-
+# CONTINUARE DA QUI
 
 lista_elezione <- aggregate(
   VOTI_LISTA ~ LISTA + ELEZIONE,
