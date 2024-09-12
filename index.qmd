@@ -83,23 +83,22 @@ corrispondenza_liste[
 prov_lista_elezione <- dati[
   , 
   .(VOTI = sum(VOTI)), 
-  keyby = .(PROVINCIA, LISTA, ELEZIONE)
+  keyby = .(PROVINCIA, LISTA, DATA, ELEZIONE)
 ]
 setnames(prov_lista_elezione, "LISTA", "LISTA_ORIGINALE")
 
 # Individuo le liste corrispondenti, e calcolo i voti per le nuove liste
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
+prov_lista_elezione <- prov_lista_elezione[
   corrispondenza_liste,
-  allow.cartesian = TRUE
-)
+  on = .(DATA, ELEZIONE, LISTA_ORIGINALE)
+]
 
 prov_lista_elezione[, VOTI := VOTI * FATTORE]
 
 prov_lista_elezione <- prov_lista_elezione[
   ,
   .(VOTI = sum(VOTI)),
-  keyby = .(PROVINCIA, LISTA, ELEZIONE)
+  keyby = .(PROVINCIA, LISTA, DATA, ELEZIONE)
 ]
 ```
 
@@ -115,67 +114,54 @@ prov_lista_elezione[
 # Ne calcolo il logit
 prov_lista_elezione[, LOGIT_P := qlogis(PERCENTUALE)]
 
-# CONTINUARE DA QUI
+# Calcolo i voti totali ricevuti da ogni lista in ogni elezione
+lista_elezione <- prov_lista_elezione[
+  ,
+  .(VOTI = sum(VOTI)),
+  keyby = .(LISTA, DATA, ELEZIONE)
+]
 
-lista_elezione <- aggregate(
-  VOTI_LISTA ~ LISTA + ELEZIONE,
-  prov_lista_elezione,
-  sum
-)
+# Calcolo la percentuale
+lista_elezione[
+  ,
+  PERCENTUALE := VOTI / sum(VOTI),
+  by = ELEZIONE
+]
 
-lista_elezione <- merge(
-  lista_elezione,
-  aggregate(
-    VOTI_LISTA ~ ELEZIONE,
-    lista_elezione,
-    sum
-  ),
-  by = "ELEZIONE",
-  suffixes = c("", "_REG")
-)
-
-lista_elezione$PERCENTUALE <- 
-  lista_elezione$VOTI_LISTA / lista_elezione$VOTI_LISTA_REG
-
-lista_elezione$LOG_P <- qlogis(lista_elezione$PERCENTUALE)
-
-
-
-lista_elezione <- merge(
-  lista_elezione,
-  df_elezioni[, c("ELEZIONE", "DATA")]
-)
+# Ne calcolo il logit
+lista_elezione[, LOGIT_P := qlogis(PERCENTUALE)]
 
 
 ```
 
-
 ```{r sigma}
-SIGMA_R <- tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-  df <- df[order(df$DATA),]
-  
-  return(sd(diff(df$LOG_P) / unclass(diff(df$DATA))))
-})
 
-liste <- data.frame(
-  LISTA = names(SIGMA_R),
-  SIGMA_R = SIGMA_R
+# Per ogni lista, calcolo la deviazione standard della velocità di cambiamento
+# del logit della percentuale
+setkey(lista_elezione, DATA)
+
+calcola_sigma <- function(df) return(
+  sd(diff(df$LOGIT_P) / unclass(diff(df$DATA)))
 )
 
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  lista_elezione[, c("LISTA", "ELEZIONE", "LOG_P")],
-  by = c("LISTA", "ELEZIONE"),
-  suffixes = c("", "_REG")
-)
+liste <- liste[
+  lista_elezione[
+    ,
+    .(SIGMA_R = calcola_sigma(.SD)),
+    by = .(LISTA)
+  ],
+  on = .(LISTA)
+]
 
-prov_lista_elezione$DELTA <- 
-  prov_lista_elezione$LOG_P - prov_lista_elezione$LOG_P_REG
+# Calcolo la differenza tra il logit provinciale e il logit regionale
+prov_lista_elezione[
+  lista_elezione[, .(LISTA, ELEZIONE, LOGIT_P)],
+  on = .(LISTA, ELEZIONE),
+  DELTA := LOGIT_P  - i.LOGIT_P
+]
 
-prov_lista_elezione <- merge(
-  prov_lista_elezione,
-  df_elezioni[, c("ELEZIONE", "DATA")]
-)
+
+# CONTINUARE DA QUI
 
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
