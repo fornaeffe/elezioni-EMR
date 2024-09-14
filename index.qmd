@@ -191,6 +191,11 @@ liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 ```{r dati}
 #| include: false
 
+# Creo la tabella province
+province <- pop_legale[
+  
+]
+
 
 setorder(prov_lista_elezione, PROVINCIA, LISTA, -DATA)
 prov_lista <- prov_lista_elezione[

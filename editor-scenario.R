@@ -9,7 +9,7 @@ file_scenario <- paste0("scenari/", scenario,".RData")
 # Carica i dati
 load("dati/dati.RData")
 
-# Tiene solo i dati dell'Emilia-Romagna
+
 setkey(dati, DATA, ELEZIONE, LISTA)
 
 # Elenca le liste nelle passate elezioni
@@ -54,15 +54,18 @@ liste <- data_edit(
 )
 
 # Aggiunge alla matrice delle liste le colonne relative alle liste mancanti
-matrice_liste <- cbind(
-  matrice_liste,
-  sapply(
-    setdiff(liste$LISTA, colnames(matrice_liste[-1:-3])),
-    function(lista) {
-      (matrice_liste$LISTA == lista) * 1
-    }
+if (length(setdiff(liste$LISTA, colnames(matrice_liste[-1:-3]))) > 0) {
+  matrice_liste <- cbind(
+    matrice_liste,
+    sapply(
+      setdiff(liste$LISTA, colnames(matrice_liste[-1:-3])),
+      function(lista) {
+        (matrice_liste$LISTA == lista) * 1
+      }
+    )
   )
-)
+}
+
 
 # Rimuove le colonne relative alle liste cancellate
 matrice_liste[,setdiff(colnames(matrice_liste)[-1:-3], liste$LISTA)] <- NULL
