@@ -160,19 +160,26 @@ prov_lista_elezione[
   DELTA := LOGIT_P  - i.LOGIT_P
 ]
 
+# Per ogni lista, calcolo la deviazione standard della velocità di cambiamento
+# della differenza tra il logit provinciale e il logit regionale
+liste <- liste[
+  prov_lista_elezione[
+    ,
+    .(
+      SIGMA_P = sd(
+        .SD[
+          ,
+          .(SIGMA_P = diff(DELTA) / unclass(diff(DATA))),
+          by = PROVINCIA
+        ]$SIGMA_P
+      )
+    ),
+    by = LISTA
+  ],
+  on = .(LISTA)
+]
 
 # CONTINUARE DA QUI
-
-SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
-  sd(unlist(tapply(df, df$PROVINCIA, function(df) {
-    df <- df[order(df$DATA),]
-    return(diff(df$LOG_P) / unclass(diff(df$DATA)))
-  })))
-})
-
-stopifnot(all.equal(names(SIGMA_P), liste$LISTA))
-
-liste$SIGMA_P <- SIGMA_P
 
 liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
 liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
