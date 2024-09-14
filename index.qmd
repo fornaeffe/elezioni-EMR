@@ -104,12 +104,15 @@ prov_lista_elezione <- prov_lista_elezione[
 
 
 ```{r serie storica}
-# Calcolo le percentuali per ciascuna provincia e ciascuna elezione
+# Calcolo gli elettori per ciascuna provincia e ciascuna elezione
 prov_lista_elezione[
   ,
-  PERCENTUALE := VOTI / sum(VOTI),
+  ELETTORI := sum(VOTI),
   by = .(PROVINCIA, ELEZIONE)
 ]
+
+# Calcolo le percentuali per ciascuna provincia e ciascuna elezione
+prov_lista_elezione[, PERCENTUALE := VOTI / ELETTORI]
 
 # Ne calcolo il logit
 prov_lista_elezione[, LOGIT_P := qlogis(PERCENTUALE)]
@@ -140,14 +143,12 @@ lista_elezione[, LOGIT_P := qlogis(PERCENTUALE)]
 # del logit della percentuale
 setkey(lista_elezione, DATA)
 
-calcola_sigma <- function(df) return(
-  sd(diff(df$LOGIT_P) / unclass(diff(df$DATA)))
-)
-
 liste <- liste[
   lista_elezione[
     ,
-    .(SIGMA_R = calcola_sigma(.SD)),
+    .(
+      SIGMA_R = sd(diff(.SD$LOGIT_P) / unclass(diff(.SD$DATA)))
+    ),
     by = .(LISTA)
   ],
   on = .(LISTA)
@@ -179,7 +180,7 @@ liste <- liste[
   on = .(LISTA)
 ]
 
-# CONTINUARE DA QUI
+# Rimpiazzo i sigma mancanti con la media delle altre liste
 
 liste$SIGMA_R[is.na(liste$SIGMA_R)] <- mean(liste$SIGMA_R, na.rm = TRUE)
 liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
@@ -189,52 +190,16 @@ liste$SIGMA_P[is.na(liste$SIGMA_P)] <- mean(liste$SIGMA_P, na.rm = TRUE)
 
 ```{r dati}
 #| include: false
-#| cache: true
 
-##### Carico liste regionali #####
 
-liste_coal <- read_xlsx("dati/liste.xlsx")
-
-stopifnot(setequal(liste$LISTA, c(liste_coal$LISTA, "astensione")))
-
-liste <- merge(liste, liste_coal, all.x = TRUE)
-
-lista_elezione <- lista_elezione[order(lista_elezione$DATA, decreasing = TRUE),]
-
-liste$LOG_P <- NA
-liste$DATA <- as.POSIXct(NA)
-for (l in 1:nrow(liste)) {
-  liste$LOG_P[l] <- lista_elezione$LOG_P[lista_elezione$LISTA == liste$LISTA[l]][1]
-  liste$DATA[l] <- lista_elezione$DATA[lista_elezione$LISTA == liste$LISTA[l]][1]
-}
-# 
-# liste <- merge(
-#   liste,
-#   lista_elezione[lista_elezione$ELEZIONE == "europee2024", c("LISTA", "LOG_P")],
-#   all.x = TRUE
-# )
-
-# 
-# 
-# liste$LOG_P[liste$LISTA == "DE PASCALE"] <- lista_elezione$LOG_P[
-#   lista_elezione$ELEZIONE == "regionali-20200126.txt" &
-#     lista_elezione$LISTA == "DE PASCALE"
-# ]
-
-prov_lista <- prov_lista_elezione[,
-  c("LISTA", "PROVINCIA", "DELTA", "VOTI_LISTA_PROV", "DATA")
+setorder(prov_lista_elezione, PROVINCIA, LISTA, -DATA)
+prov_lista <- prov_lista_elezione[
+  ,
+  .SD[1],
+  by = .(PROVINCIA, LISTA),
+  .SDcols = c("LISTA", "PROVINCIA", "DATA", "DELTA", "ELETTORI")
 ]
-prov_lista <- prov_lista[order(prov_lista$DATA, decreasing = TRUE),]
-prov_lista <- prov_lista[!duplicated(interaction(prov_lista$LISTA, prov_lista$PROVINCIA)),]
 
-# prov_lista <- rbind(
-#   prov_lista,
-#   prov_lista_elezione[
-#     prov_lista_elezione$ELEZIONE == "regionali-20200126.txt" &
-#     prov_lista_elezione$LISTA == "DE PASCALE",
-#     c("LISTA", "PROVINCIA", "DELTA", "VOTI_LISTA_PROV")
-#   ]
-# )
 
 ## FIX!
 

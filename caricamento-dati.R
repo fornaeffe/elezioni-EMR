@@ -153,6 +153,36 @@ tabella <- tabella[N > 1,]
 
 if (nrow(tabella) > 0) warning("Alcuni comuni sono stati spezzettati")
 
+# Funzione che ricostruisce le variazioni nel codice e nel nome del comune
+comune_attuale <- function(indice, variazioni) {
+  
+  if (is.na(indice)) return(list(comune = NA, codice = NA))
+  
+  # Recupero il codice del comune corrispondente al nome trovato
+  codice <- variazioni$`Codice Comune formato alfanumerico`[indice]
+  
+  # Scorre tutte le variazioni successive alla riga trovata
+  for (i in indice:nrow(variazioni)) {
+    # Se la variazione non si riferisce al comune vai avanti
+    if (variazioni$`Codice Comune formato alfanumerico`[i] != codice) next
+    
+    # Solo se la variazione comporta un cambio di codice del comune,
+    # Aggiorna il codice del comune
+    if (variazioni$`Tipo variazione`[i] %in% c("ES", "CD", "AP")) {
+      codice <- 
+        variazioni$`Codice del Comune associato alla variazione o nuovo codice Istat del Comune`[i]
+    }
+  }
+  
+  # Restituisce il codice finale e il corrispondente nome del comune
+  return(list(
+    comune = ISTAT$`Denominazione in italiano`[
+      match(codice, ISTAT$`Codice Comune formato alfanumerico`)
+    ],
+    codice = codice
+  ))
+}
+
 
 # Funzione che aggiorna i nomi dei comuni e aggiunge i codici
 aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
@@ -171,33 +201,7 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
     variazioni$`Denominazione Comune`
   )
   
-  # Funzione che ricostruisce le variazioni nel codice e nel nome del comune
-  comune_attuale <- function(indice) {
-    
-    # Recupero il codice del comune corrispondente al nome trovato
-    codice <- variazioni$`Codice Comune formato alfanumerico`[indice]
-    
-    # Scorre tutte le variazioni successive alla riga trovata
-    for (i in indice:nrow(variazioni)) {
-      # Se la variazione non si riferisce al comune vai avanti
-      if (variazioni$`Codice Comune formato alfanumerico`[i] != codice) next
-      
-      # Solo se la variazione comporta un cambio di codice del comune,
-      # Aggiorna il codice del comune
-      if (variazioni$`Tipo variazione`[i] %in% c("ES", "CD", "AP")) {
-        codice <- 
-          variazioni$`Codice del Comune associato alla variazione o nuovo codice Istat del Comune`[i]
-      }
-    }
-    
-    # Restituisce il codice finale e il corrispondente nome del comune
-    return(list(
-      comune = ISTAT$`Denominazione in italiano`[
-        match(codice, ISTAT$`Codice Comune formato alfanumerico`)
-      ],
-      codice = codice
-    ))
-  }
+  
   
   # Funzione che cerca un nome di comune scritto nello stesso modo
   cerca_nome_identico <- function(nome) {
@@ -227,7 +231,7 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
       toupper(variazioni$`Denominazione Comune`) == nome
     )
     
-    if (length(matches) > 0) return(comune_attuale(matches[1]))
+    if (length(matches) > 0) return(comune_attuale(matches[1], variazioni))
     
     return(NA)
   }
@@ -298,7 +302,7 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
     
     # Se devo andarlo a cercare nei nomi passati, aggiorno il nome
     # e il codice a quelli attuali
-    return(comune_attuale(matches[1] - nrow(ISTAT) * 2))
+    return(comune_attuale(matches[1] - nrow(ISTAT) * 2, variazioni))
     
   }
   
@@ -632,9 +636,55 @@ dati <- dati[
   )
 ]
 
+# Popolazione legale ----
+
+# Purtroppo ISTAT non rende disponibile un url per scaricare in automatico
+# i dati della popolazione legale, ho copiato qui il file scaricato 
+# manualmente da http://dati-censimentipermanenti.istat.it/
+
+pop_legale <- fread("dati/DCSS_POP_LEGALE_2021.csv")
+
+# Considero solo le variazioni avvenute dopo l'ultimo censimento
+# della popolazione legale
+variazioni <- ISTAT_variazioni_pulito[DATA >= as.Date("2021-12-31")]
+setkey(variazioni, DATA)
+
+# Aggiorno i codici dei comuni
+pop_legale[
+  !ISTAT,
+  ITTER107 := sapply(
+    match(ITTER107, variazioni$`Codice Comune formato alfanumerico`),
+    function(indice) comune_attuale(indice, variazioni)$codice
+  ),
+  on = c(ITTER107 = "Codice Comune formato alfanumerico")
+]
+
+# TODO: test per evitare che vengano cancellati dei comuni non trovati
+
+# Associo ad ogni codice ITTER107 i dati del comune dalla tabella ISTAT
+pop_legale <- pop_legale[
+  ISTAT,
+  .(
+    CODICE_REGIONE = `Codice Regione`,
+    REGIONE = `Denominazione Regione`,
+    CODICE_PROVINCIA = `Codice dell'Unità territoriale sovracomunale \n(valida a fini statistici)`,
+    PROVINCIA = `Denominazione dell'Unità territoriale sovracomunale \n(valida a fini statistici)`,
+    CODICE_COMUNE = ITTER107,
+    COMUNE = `Denominazione in italiano`,
+    POPOLAZIONE = Value
+  ),
+  on = c(ITTER107 = "Codice Comune formato alfanumerico")
+]
+
+
+# Filtro e salvataggio ----
+
 # Tiene solo i dati dell'Emilia-Romagna
+pop_legale <- pop_legale[CODICE_REGIONE == 8]
 dati <- dati[CODICE_REGIONE == 8]
 
 # Salvo il file
-save(dati, file = "dati/dati.RData")
+save(dati, pop_legale, file = "dati/dati.RData")
+
+# TODO: parallelizzare e/o usare i join di data.table
 
