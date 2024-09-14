@@ -469,46 +469,46 @@ lista_elezione <- merge(
 ```
 
 ```{r sondaggi}
-sondaggi <- read_xlsx("dati/liste.xlsx", "sondaggi")
-sondaggi$DATA <- as.POSIXct(sondaggi$DATA)
-
-astensione_base <- lista_elezione$PERCENTUALE[
-  lista_elezione$LISTA == "astensione" & 
-    lista_elezione$DATA == max(lista_elezione$DATA)
-]
-
-sondaggi <- rbindlist(tapply(
-  sondaggi,
-  interaction(sondaggi$SONDAGGIO, sondaggi$DATA),
-  function(df) {
-    if ("astensione" %in% df$LISTA) {
-      astensione <- df$PERCENTUALE[df$LISTA == "astensione"]
-    } else {
-      astensione <- astensione_base
-    }
-    
-    df$PERCENTUALE[df$LISTA != "astensione"] <- 
-      df$PERCENTUALE[df$LISTA != "astensione"] * (1 - astensione)
-    
-    return(df)
-    
-  }
-))
-
-sondaggi$LOG_P <- qlogis(sondaggi$PERCENTUALE)
-
-lista_elezione <- rbind(
-  lista_elezione,
-  data.frame(
-    ELEZIONE = sondaggi$SONDAGGIO,
-    LISTA = sondaggi$LISTA,
-    VOTI_LISTA = NA,
-    VOTI_LISTA_REG = NA,
-    PERCENTUALE = sondaggi$PERCENTUALE,
-    LOG_P = sondaggi$LOG_P,
-    DATA = sondaggi$DATA
-  )
-)
+# sondaggi <- read_xlsx("dati/liste.xlsx", "sondaggi")
+# sondaggi$DATA <- as.POSIXct(sondaggi$DATA)
+# 
+# astensione_base <- lista_elezione$PERCENTUALE[
+#   lista_elezione$LISTA == "astensione" & 
+#     lista_elezione$DATA == max(lista_elezione$DATA)
+# ]
+# 
+# sondaggi <- rbindlist(tapply(
+#   sondaggi,
+#   interaction(sondaggi$SONDAGGIO, sondaggi$DATA),
+#   function(df) {
+#     if ("astensione" %in% df$LISTA) {
+#       astensione <- df$PERCENTUALE[df$LISTA == "astensione"]
+#     } else {
+#       astensione <- astensione_base
+#     }
+#     
+#     df$PERCENTUALE[df$LISTA != "astensione"] <- 
+#       df$PERCENTUALE[df$LISTA != "astensione"] * (1 - astensione)
+#     
+#     return(df)
+#     
+#   }
+# ))
+# 
+# sondaggi$LOG_P <- qlogis(sondaggi$PERCENTUALE)
+# 
+# lista_elezione <- rbind(
+#   lista_elezione,
+#   data.frame(
+#     ELEZIONE = sondaggi$SONDAGGIO,
+#     LISTA = sondaggi$LISTA,
+#     VOTI_LISTA = NA,
+#     VOTI_LISTA_REG = NA,
+#     PERCENTUALE = sondaggi$PERCENTUALE,
+#     LOG_P = sondaggi$LOG_P,
+#     DATA = sondaggi$DATA
+#   )
+# )
 
 ```
 
@@ -614,7 +614,7 @@ prov_lista <- prov_lista[order(prov_lista$PROVINCIA, prov_lista$LISTA),]
 prov_lista$VOTI_LISTA_PROV[prov_lista$LISTA == "DE PASCALE"] <-
   prov_lista$VOTI_LISTA_PROV[prov_lista$LISTA == "PARTITO DEMOCRATICO"]
 
-# liste$DATA <- max(df_elezioni$DATA)
+liste$DATA <- max(df_elezioni$DATA)
 prov_lista$DATA <- max(df_elezioni$DATA)
 
 ## END FIX
@@ -985,19 +985,19 @@ superamento_soglia()
 #| results: hide
 
 
-tapply(
-  risultato$liste[risultato$liste$COLORE != "#DDDDDD"],
-  risultato$liste$LISTA[risultato$liste$COLORE != "#DDDDDD"],
-  function(df) {
-    plot(
-      ELETTI ~ I(PERCENTUALE*100),
-      data = df,
-      col = COLORE,
-      xlab = "Percentuale sui voti validi",
-      main = df$LISTA[1]
-    )
-  }
-)
+# tapply(
+#   risultato$liste[risultato$liste$COLORE != "#DDDDDD"],
+#   risultato$liste$LISTA[risultato$liste$COLORE != "#DDDDDD"],
+#   function(df) {
+#     plot(
+#       ELETTI ~ I(PERCENTUALE*100),
+#       data = df,
+#       col = COLORE,
+#       xlab = "Percentuale sui voti validi",
+#       main = df$LISTA[1]
+#     )
+#   }
+# )
 
 
 ```
@@ -1119,10 +1119,10 @@ grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA")
 
 grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "PARMA")
 
-grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "BOLOGNA")
-
-grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "REGGIO NELL'EMILIA")
-grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "MODENA")
+# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "BOLOGNA")
+# 
+# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "REGGIO NELL'EMILIA")
+# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "MODENA")
 ```
 
 <!-- ## Possibilità di eleggere a Parma e Reggio in base alle relative percentuali -->
