@@ -544,7 +544,7 @@ prov_lista_elezione <- merge(
 SIGMA_P <- tapply(prov_lista_elezione, prov_lista_elezione$LISTA, function(df) {
   sd(unlist(tapply(df, df$PROVINCIA, function(df) {
     df <- df[order(df$DATA),]
-    return(diff(df$LOG_P) / unclass(diff(df$DATA)))
+    return(diff(df$DELTA) / unclass(diff(df$DATA)))
   })))
 })
 
