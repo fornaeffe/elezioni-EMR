@@ -9,12 +9,13 @@ format:
 
 Questo report contiene i risultati di una simulazione delle prossime elezioni
 del Consiglio della Regione Emilia-Romagna, ottenuti
-partendo dai risultati delle elezioni europee 2024.
-Vengono eseguite 1000 simulazioni, in ciascuna di esse le percentuali che ciascuna
-lista ha preso alle elezioni europee in ciascuna provincia 
+partendo dai risultati delle ultime elezioni politiche e del sondaggio BiDiMedia 15 novembre 2024.
+Vengono eseguite 10000 simulazioni, in ciascuna di esse le percentuali stimate
+dal sondaggio BiDiMedia vengono distribuite tra le province secondo la distribuzione
+verificata alle ultime elezioni politiche, e poi queste percentuali
 vengono aumentate o diminuite casualmente di una quantità che sia coerente
 con la variabilità che ha avuto nel passato la percentuale di quella lista.
-Per i dettagli vedere in fondo negli approfondimenti.
+<!-- Per i dettagli vedere in fondo negli approfondimenti. -->
 
 Avverto che ho fatto questa simulazione per curiosità e non per lavoro, e che
 potrebbero essermi sfuggiti degli errori nel processo di
@@ -593,11 +594,11 @@ for (l in 1:nrow(liste)) {
 # ]
 
 prov_lista <- prov_lista_elezione[,
-  c("LISTA", "PROVINCIA", "DELTA", "VOTI_LISTA_PROV", "DATA")
+  c("ELEZIONE", "LISTA", "PROVINCIA", "DELTA", "VOTI_LISTA_PROV", "DATA")
 ]
-prov_lista <- prov_lista[order(prov_lista$DATA, decreasing = TRUE),]
+prov_lista <- prov_lista[order(prov_lista$ELEZIONE == "camera_2022", prov_lista$DATA, decreasing = TRUE),]
 prov_lista <- prov_lista[!duplicated(interaction(prov_lista$LISTA, prov_lista$PROVINCIA)),]
-
+prov_lista$ELEZIONE <- NULL
 # prov_lista <- rbind(
 #   prov_lista,
 #   prov_lista_elezione[
@@ -615,7 +616,7 @@ prov_lista$VOTI_LISTA_PROV <- NULL
 
 prov_lista <- merge(prov_lista, elettori)
 
-prov_lista$DATA <- max(df_elezioni$DATA)
+prov_lista$DATA <- max(prov_lista$DATA)
 
 ## END FIX
 
@@ -797,7 +798,7 @@ simula <- function(
   risultato
 }
 
-risultato <- simula(1000)
+risultato <- simula(10000)
 
 ```
 
@@ -821,73 +822,13 @@ risultato$liste$PERCENTUALE <- formattable::percent(risultato$liste$PERCENTUALE,
 
 ```
 
-## Dati
-
-```{r}
-kbl(
-    liste[liste$COLORE != "#DDDDDD", c("COALIZIONE", "LISTA")],
-    col.names = c("COALIZIONE", "LISTA"),
-    caption = "Liste",
-    row.names = FALSE
-  ) %>%
-    kable_minimal()
-```
 
 
 
 ## Risultati
 
 
-
-### Percentuali per lista
-
-Questo grafico mostra le percentuali simulate per ciascuna 
-lista.
-
-```{r ris_per_partito}
-
-par(mar=c(4, 12, 0.1, 0.1))
-
-boxplot(
-  PERCENTUALE * 100 ~ LISTA, 
-  data = droplevels(risultato$liste[risultato$liste$COLORE != "#DDDDDD"]), 
-  horizontal = TRUE, 
-  las=1,
-  xlab = "Percentuale sui voti validi",
-  ylab = NA,
-  col = liste$COLORE[liste$COLORE != "#DDDDDD"],
-  cex.axis = 0.8
-  )
-
-
-```
-
-### Coalizioni vincenti
-
-```{r vincenti}
-
-vittoria <- aggregate(
-      PRESIDENTE ~ COALIZIONE,
-      risultato$coalizioni,
-      mean
-    )
-
-vittoria$PRESIDENTE <- formattable::percent(vittoria$PRESIDENTE, 0)
-
-
-kbl(
-    vittoria[vittoria$PRESIDENTE > 0,],
-    col.names = c("COALIZIONE", "Prob."),
-    caption = "Probabilità di vittoria",
-    row.names = FALSE
-  ) %>%
-    kable_minimal()
-
-
-```
-
-
-### Composizione media del Consiglio Regionale
+### Composizione del Consiglio Regionale
 
 ```{r plot_parlamento}
 #| warning: false 
@@ -955,274 +896,6 @@ disegna_parlamento()
 
 ```
 
-### Probabilità di eleggere qualcuno
-
-```{r}
-superamento_soglia <- function() {
-  
-  soglie <- aggregate(
-    ELETTI ~ LISTA,
-    risultato$liste,
-    function(x) mean(x > 0)
-  )
-  soglie <- soglie[soglie$LISTA %in% liste$LISTA[liste$COLORE != "#DDDDDD"],]
-  soglie$SOGLIA <- formattable::percent(soglie$ELETTI, 0)
-  kbl(
-    soglie[, c("LISTA", "SOGLIA")],
-    col.names = c("LISTA", "Prob."),
-    caption = "Prob. di eleggere qualcuno",
-    row.names = FALSE
-  ) %>%
-    kable_minimal()
-}
-
-superamento_soglia()
-
-```
-
-### Numero di seggi rispetto alle percentuali ottenute
-```{r}
-#| results: hide
-
-
-# tapply(
-#   risultato$liste[risultato$liste$COLORE != "#DDDDDD"],
-#   risultato$liste$LISTA[risultato$liste$COLORE != "#DDDDDD"],
-#   function(df) {
-#     plot(
-#       ELETTI ~ I(PERCENTUALE*100),
-#       data = df,
-#       col = COLORE,
-#       xlab = "Percentuale sui voti validi",
-#       main = df$LISTA[1]
-#     )
-#   }
-# )
-
-
-```
-
-```{r}
-
-grafico_eletti <- function(lista) {
-  lp <- risultato$liste[risultato$liste$LISTA == lista]
-  
-  nmax <- factor(
-      lp$ELETTI
-    )
-  if (length(levels(nmax)) < 2) levels(nmax) <- c(levels(nmax), "99")
-  colori <- colorRampPalette(
-    c(
-      liste$COLORE[liste$LISTA == lista],
-      "#FFFFFF"
-    )
-  )(length(levels(nmax)))
-  tab <- spineplot(
-    nmax ~ I(
-      lp$PERCENTUALE*100
-    ),
-    breaks = 12,
-    col = colori,
-    yaxlabels = NA,
-    ylab = NA,
-    xlab = "Percentuale sui voti validi",
-    main = lista
-  )
-  
-  # From https://stackoverflow.com/questions/74814855/how-can-i-plot-data-labels-over-spineplot-in-r
-  nums <- t(apply(tab, 1,rev))
-  pcts <- prop.table(cbind(0, nums), 1)
-  pcts <- t(apply(pcts, 1, cumsum))
-  yvals <- pcts[,-ncol(pcts)] + (pcts[,-1] - pcts[,-ncol(pcts)])/2
-  xvals <- cumsum(c(0, rowSums(nums)/sum(rowSums(nums))))
-  xvals <- xvals[-length(xvals)] + (xvals[-1] - xvals[-length(xvals)])/2
-  
-  xvals <- array(xvals, dim=dim(yvals))
-  xvals <- c(xvals)
-  yvals <- c(yvals)
-  labs <- rep(colnames(nums), each = nrow(nums))
-  
-  text(x = xvals[nums > 5], y = yvals[nums > 5], labels = labs[nums > 5])
-  
-  # legend(
-  #   "topleft",
-  #   legend = levels(nmax),
-  #   fill = rev(colori),
-  #   title = "Eletti"
-  # )
-}
-
-for (lista in liste$LISTA[liste$COLORE != "#DDDDDD"]) grafico_eletti(lista)
-
-
-
-
-```
-### Numero di seggi nella provincia di Parma rispetto alle percentuali ottenute
-```{r}
-grafico_eletti_prov <- function(lista, provincia_eletti, provincia_percentuale = NA) {
-  lp <- risultato$prov_lista[risultato$prov_lista$LISTA == lista & risultato$prov_lista$PROVINCIA == provincia_eletti]
-  
-  if (is.na(provincia_percentuale)) {
-    percentuali <- risultato$liste[risultato$liste$LISTA == lista]
-  } else {
-    percentuali <- risultato$prov_lista[risultato$prov_lista$LISTA == lista & risultato$prov_lista$PROVINCIA == provincia_percentuale]
-  }
-  
-  lp$PERCENTUALE <- NULL
-  lp <- merge(
-    lp,
-    percentuali[,c("SIM", "PERCENTUALE")]
-  )
-  
-  nmax <- factor(
-      lp$ELETTI
-    )
-  colori <- colorRampPalette(
-    c(
-      liste$COLORE[liste$LISTA == lista],
-      "#FFFFFF"
-    )
-  )(length(levels(nmax)))
-  tab <- spineplot(
-    nmax ~ I(
-      lp$PERCENTUALE*100
-    ),
-    breaks = 12,
-    col = colori,
-    yaxlabels = NA,
-    ylab = NA,
-    xlab = paste(
-      "Percentuale sui voti validi",
-      ifelse(is.na(provincia_percentuale), "in regione", paste("a", provincia_percentuale))
-    ),
-    main = lista
-  )
-  mtext(side = 3, line = 0.25, paste("Numero di eletti nella provincia di", provincia_eletti))
-  
-  # From https://stackoverflow.com/questions/74814855/how-can-i-plot-data-labels-over-spineplot-in-r
-  nums <- t(apply(tab, 1,rev))
-  pcts <- prop.table(cbind(0, nums), 1)
-  pcts <- t(apply(pcts, 1, cumsum))
-  yvals <- pcts[,-ncol(pcts)] + (pcts[,-1] - pcts[,-ncol(pcts)])/2
-  xvals <- cumsum(c(0, rowSums(nums)/sum(rowSums(nums))))
-  xvals <- xvals[-length(xvals)] + (xvals[-1] - xvals[-length(xvals)])/2
-  xvals <- array(xvals, dim=dim(yvals))
-  xvals <- c(xvals)
-  yvals <- c(yvals)
-  labs <- rep(colnames(nums), each = nrow(nums))
-  
-  text(x = xvals[nums > 5], y = yvals[nums > 5], labels = labs[nums > 5])
-  
-  
-}
-
-# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA")
-# 
-# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "PARMA")
-
-# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "BOLOGNA")
-# 
-# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "REGGIO NELL'EMILIA")
-# grafico_eletti_prov("ALLEANZA VERDI SINISTRA", "PARMA", "MODENA")
-```
-
-<!-- ## Possibilità di eleggere a Parma e Reggio in base alle relative percentuali -->
-```{r}
-# grafico_pp <- function(
-#     lista1, 
-#     lista2 = lista1, 
-#     provincia1 = NA, 
-#     provincia2 = provincia1,
-#     dato = "percentuali"
-# ) {
-#   
-#   stopifnot(
-#     lista1 %in% liste$LISTA,
-#     lista2 %in% liste$LISTA,
-#     provincia1 %in% c(NA, province$PROVINCIA),
-#     provincia2 %in% c(NA, province$PROVINCIA)
-#   )
-#   
-#   estrai_df <- function(lista, provincia) {
-#     if (is.na(provincia)) {
-#       df <- risultato$liste[
-#         risultato$liste$LISTA == lista,
-#         c("SIM", "ELETTI", "PERCENTUALE", "VOTI_LISTA_ITER")
-#       ]
-#     } else {
-#       df <- risultato$prov_lista[
-#         risultato$prov_lista$LISTA == lista & 
-#           risultato$prov_lista$PROVINCIA == provincia,
-#         c("SIM", "ELETTI", "PERCENTUALE", "VOTI_LISTA_ITER")
-#       ]
-#     }
-#     
-#     if (dato == "voti") {
-#       df$DATO <- df$VOTI_LISTA_ITER
-#     } else {
-#       df$DATO <- df$PERCENTUALE
-#     }
-# 
-#     df$VOTI_LISTA_ITER <- NULL
-#     df$PERCENTUALE <- NULL
-#     
-#     df
-#   }
-#   
-#   df <- merge(
-#     estrai_df(lista1, provincia1),
-#     estrai_df(lista2, provincia2),
-#     by = "SIM",
-#     suffixes = c("_1", "_2")
-#   )
-#   
-#   plot(
-#     DATO_1 ~ DATO_2,
-#     data = df,
-#     xlim = c(
-#       min(c(DATO_1, DATO_2)),
-#       max(c(DATO_1, DATO_2))
-#     ),
-#     ylim = c(
-#       min(c(DATO_1, DATO_2)),
-#       max(c(DATO_1, DATO_2))
-#     ),
-#     pch = 19,
-#     col = ifelse(ELETTI_1 > 0, "#00FF0080", "#00000040"),
-#     cex = 3
-#   )
-#   abline(0,1)
-#   
-#   
-# }
-# 
-# grafico_pp(
-#   "ALLEANZA VERDI SINISTRA",
-#   "ALLEANZA VERDI SINISTRA", 
-#   "PARMA",
-#   "REGGIO NELL'EMILIA"
-# )
-```
-
-
-
-#### Per coalizione
-```{r}
-par(mar = c(5, 4, 0, 0))
-plot(
-  ELETTI ~ I(PERCENTUALE*100), 
-  data = risultato$coalizioni, 
-  col = COLORE,
-  xlab = "Percentuale sui voti validi"
-)
-legend(
-  "bottomright", 
-  legend = coalizioni$COALIZIONE[coalizioni$COLORE != "#DDDDDD"], 
-  col = coalizioni$COLORE[coalizioni$COLORE != "#DDDDDD"],
-  pch = 1
-)
-```
 
 
 ### Probabilità di elezione per ciascuna posizione nelle province
@@ -1259,9 +932,15 @@ disegna_tabella_prob <- function(lista) {
         valori_hsv["h", 1], 
         valori_hsv["s", 1]*tbl2[,i], 
         1
-      )
+      ),
+      width = "1.5cm"
     )
   }
+  kb <- column_spec(
+    kb,
+    1,
+    width = "5cm"
+  )
   kb
 }
 
@@ -1269,210 +948,6 @@ disegna_tabella_prob <- function(lista) {
 for (lista in liste$LISTA[liste$LISTA != "astensione" & liste$COLORE != "#DDDDDD"]) {
   print(disegna_tabella_prob(lista))
 }
-
-```
-
-
-
-# Approfondimenti
-
-Per predire il numero di voti che ciascuna lista prenderà alle prossime
-elezioni regionali in ciascuna provincia ho ipotizzato che i voti presi da
-ciascuna lista seguano il modello che descrivo qui di seguito.
-
-Ho ipotizzato che la percentuale regionale (sul totale degli elettori) della 
-lista $l$ nell'elezione $t$ (trasformata attraverso la funzione 
-$\operatorname{logit}$ affinché non sia vincolata tra 0 e 1) sia uguale alla 
-percentuale regionale della stessa lista nell'elezione precedente ($t-1$) 
-(anch'essa trasformata tramite $\operatorname{logit}$), più una quantità 
-(positiva o negativa) che dipende dal tempo trascorso tra le due elezioni e da 
-una "velocità" di cambiamento casuale, con una distribuzione normale e una 
-deviazione standard che può variare da lista a lista (ci saranno liste più 
-stabili, le cui velocità di cambiamento saranno vicine allo zero, e liste meno
-stabili con velocità di cambiamento che possono discostarsi maggiormente dallo 
-zero).
-
-$$ \operatorname{logit}(P_{l,t}) = \operatorname{logit}(P_{l,t-1}) 
-+ (data_t - data_{t-1}) \cdot v_{R, l, t} $$
-
-$$ v_{R, l, t} \sim \mathcal{N}(0, \sigma_{R,l})$$
-
-Dove 
-
-* $P_{l,t}$ è la percentuale regionale (sul totale degli aventi diritto al voto)
-della lista $l$ all'elezione $t$,
-* $P_{t-1}$ è la percentuale della lista $l$ all'elezione precedente ($t-1$),
-* $data_t$ e $data_{t-1}$ sono le date delle due elezioni,
-* $v_{R, l, t}$ è la velocità di cambiamento della percentuale trasformata
-regionale della lista $l$ tra l'elezione $t-1$ e l'elezione $t$
-* $\sigma_{R,l}$ è la deviazione standard delle velocità di cambiamento della
-percentuale (logit-trasformata) della lista $l$.
-
-Ipotizzo poi che, per ciascuna provincia $p$, la percentuale provinciale 
-$p_{l,p,t}$ della lista $l$ sul totale degli aventi diritto al voto 
-(sempre trasformata tramite $\operatorname{logit}$) sia uguale alla 
-percentuale regionale $P_{l,t}$ (trasformata) della stessa lista, più (o meno) 
-una differenza $\delta_{l,p,t}$ specifica per la provincia:
-
-$$\operatorname{logit}(p_{l,p,t}) = \operatorname{logit}(P_{l,t}) +
-\delta_{l,p,t}$$
-
-Ipotizzo infine che questa differenza possa cambiare tra un'elezione e l'altra
-di una quantità che dipende dal tempo trascorso e da una "velocità" casuale
-con una distribuzione normale e una deviazione standard $\sigma_{P, l}$
-specifica per la lista:
-
-$$
-\delta_{l, p, t} = \delta_{l, p, t-1} + (data_t - data_{t-1}) \cdot 
-v_{p, l, t}
-$$
-
-
-$$v_{p, l, t} \sim \mathcal{N}(0, \sigma_{P,l})$$
-
-Dove 
-
-* $v_{p, l, t}$ è la velocità di cambiamento di $\delta_{l,p,t}$ 
-tra l'elezione $t-1$ e l'elezione $t$ nella provincia $p$,
-* $\sigma_{P,l}$ è la deviazione standard della distribuzione delle velocità di 
-cambiamento $v_{p, l, t}$.
-
-In tutti questi casi considero l'astensione come una lista a sé.
-
-
-Dai dati sulle elezioni precedenti ottengo quindi:
-
-* per ciascuna lista $l$, la deviazione standard $\sigma_{R,l}$ delle velocità
-di cambiamento delle percentuali regionali trasformate;
-* per ciascuna lista $l$, la deviaizone standard $\sigma_{P,l}$ delle velocità
-di cambiamento delle differenze tra ciascuna provincia e la regione;
-* per ciascuna lista $l$, la percentuale regionale trasformata 
-$\operatorname{logit}(P_{l,europee\ 2024})$ ottenuta alle ultime elezioni;
-* per ciascuna lista $l$ e ciascuna provincia $p$, la differenza 
-$\delta_{l,p,europee\ 2024}$ tra la percentuale trasformata provinciale e
-regionale alle ultime elezioni.
-
-
-Per fare una simulazione dei voti delle prossime elezioni, quindi:
-
-1. calcolo il tempo che trascorrerà tra le elezioni europee e una probabile 
-data delle prossime elezioni regionali
-2. estraggo a sorte, per ciascuna lista $l$, le velocità di cambiamento
-$v_{R, l, regionali\ 2024}$ delle percentuali regionali;
-3. attraverso le equazioni sopra, calcolo le nuove percentuali regionali;
-4. estraggo a sorte, per ciascuna lista $l$ e provincia $p$, le velocità di 
-cambiamento $v_{p, l, regionali\ 2024}$ delle differenze provinciali;
-5. attraverso le equazioni sopra, calcolo le nuove differenze provinciali e a 
-seguire le nuove percentuali provinciali.
-
-Le percentuali provinciali così ottenute vengono poi scalate in modo che la 
-somma di tutte le percentuali della provincia faccia 1:
-
-$$\hat{p}_{l, p, regionali\ 2024} = \frac{p_{l, p, regionali\ 2024}}
-{\displaystyle{\sum_{l \in Liste } p_{l, p,  regionali\ 2024}}}$$
-
-dove $\hat{p}_{l,p, regionali\ 2024}$ è la percentuale scalata della lista $l$
-nella provincia $p$, simulata per le prossime elezioni regionali.
-
-Quest'ultima percentuale viene poi moltiplicata per gli elettori, per ottenere
-il numero di voti ricevuti da ciascuna lista in ciascuna provincia.
-
-Con questi voti viene poi simulato uno scrutinio, seguendo quanto stabilito
-dalla legge elettorale regionale.
-
-## Serie storica dei risultati delle liste
-
-Di seguito la serie storica di elezioni considerate. Sono mostrate le
-percentuali di ciascuna lista rispetto al totale degli aventi diritto al voto.
-
-In alcuni casi i risultati passati della lista sono basati sul risultato di 
-liste affini.
-
-I triangoli sulla destra comprendono il 95% dei risultati simulati di ciascuna
-lista alle prossime elezioni.
-
-```{r}
-#| fig.width: 8
-#| fig-height: 8
-#| dpi: 100
-#| results: hide
-
-
-elettori <- 
-  lista_elezione$VOTI_LISTA_REG[lista_elezione$ELEZIONE == "europee2024"][1]
-
-votanti <- tapply(risultato$liste$VOTI_LISTA_ITER, risultato$liste$SIM, sum)
-astenuti <- data.frame(
-  LISTA = "astensione",
-  SIM = 1:length(votanti),
-  COALIZIONE = NA,
-  ELETTI = NA,
-  VOTI_LISTA_ITER = elettori - votanti,
-  PERCENTUALE = NA,
-  COLORE = liste$COLORE[liste$LISTA == "astensione"]
-)
-astenuti$PERCENTUALE <- formattable::percent(astenuti$PERCENTUALE, 2)
-risultato$liste <- rbind(risultato$liste, astenuti)
-risultato$liste$PERCENTUALE_ELETTORI <- 
-  risultato$liste$VOTI_LISTA_ITER / elettori
-
-lista_elezione <- merge(
-  lista_elezione,
-  liste[, c("LISTA", "COLORE")]
-)
-
-# Ordino secondo la data 
-lista_elezione <- lista_elezione[order(lista_elezione$DATA),]
-
-par(mar=c(15.1, 4.1, 4.1, 2.1), xpd=TRUE)
-
-disegna_grafico <- function(log = FALSE) {
-  # Grafico dell'andamento della percentuale in base alla data
-  plot(
-    PERCENTUALE * 100 ~ DATA, 
-    data = lista_elezione, 
-    pch = "",
-    ylab = "Percentuale sugli elettori",
-    xlim = c(min(DATA), data_elezione),
-    ylim = c(0, 100*quantile(
-      risultato$liste$PERCENTUALE_ELETTORI[risultato$liste$LISTA == "astensione"],
-      0.975
-    )),
-    log = ifelse(log, "y", "")
-  )
-  tapply(lista_elezione, lista_elezione$LISTA, function(df) {
-    lines(PERCENTUALE * 100 ~ DATA, data = df, col = df$COLORE, lwd = 2)
-  })
-  
-  for (lista in liste$LISTA) {
-    y0 <- 100*plogis(liste$LOG_P[liste$LISTA == lista])
-    y1 <- 100*quantile(
-      risultato$liste$PERCENTUALE_ELETTORI[risultato$liste$LISTA == lista],
-      0.975
-    )
-    y2 <- 100*quantile(
-      risultato$liste$PERCENTUALE_ELETTORI[risultato$liste$LISTA == lista],
-      0.025
-    )
-    polygon(
-      c(liste$DATA[liste$LISTA == lista], data_elezione, data_elezione),
-      c(y0, y1, y2),
-      border = liste$COLORE[liste$LISTA == lista],
-      col = adjustcolor(liste$COLORE[liste$LISTA == lista], alpha.f = 0.5)
-    )
-  }
-  
-  legend(
-    "bottomleft", 
-    inset=c(0,-0.6), 
-    legend=liste$LISTA, 
-    lwd = 2, 
-    col = liste$COLORE,
-    ncol = 2
-  )
-}
-
-disegna_grafico()
 
 ```
 
