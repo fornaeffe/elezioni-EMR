@@ -484,6 +484,57 @@ tryCatch(
   )
 )
 
+#### Regionali 2024 ####
+
+tryCatch(
+  {
+    cat("\nDownload dei dati delle elezioni regionali del 2024...\n")
+    regionali_2024 <- scarica(
+      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20241117.zip",
+      "Regionali_EmiliaRomagna_2024_Scrutini.csv"
+    )
+    
+    
+    # Calcolo l'astensione
+    regionali_2024 <- rbind(
+      regionali_2024,
+      regionali_2024[
+        ,
+        .(
+          VOTI_LISTA = ELETTORI_TOTALI - sum(VOTI_LISTA),
+          LISTA = "astensione"
+        ),
+        by = .(
+          REGIONE,
+          CIRCOSCRIZIONE,
+          COMUNE,
+          ELETTORI_TOTALI
+        )
+      ],
+      fill = TRUE
+    )
+    
+    # Aggiorno il nome dei comuni
+    regionali_2024 <- aggiorna_comuni(regionali_2024)
+    
+    dati <- rbind(
+      dati,
+      data.table(
+        DATA = as.POSIXct("2024-11-17"),
+        ELEZIONE = "regionali 2024",
+        COMUNE = regionali_2024$comune,
+        CODICE_COMUNE = regionali_2024$codice,
+        LISTA = regionali_2024$LISTA,
+        VOTI = regionali_2024$VOTI_LISTA
+      )
+    )
+  },
+  error = function(e) warning(
+    "Non sono riuscito a caricare i dati delle elezioni ",
+    "regionali del 2024, a causa di questo errore: ", e
+  )
+)
+
 # Controlla che non siano presenti codici comune sconosciuti
 stopifnot(length(setdiff(dati$CODICE_COMUNE, ISTAT$PRO_COM_T)) == 0)
 
