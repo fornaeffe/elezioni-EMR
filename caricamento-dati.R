@@ -1,7 +1,11 @@
 library(data.table)
 library(stringr)
+library(rsdmx)
 
 # TODO: trasformare le coppie CODICE/NOME in factors
+# TODO: dati VdA 2022
+
+path_to_unzipper <- "C:/Program Files/Git/usr/bin/unzip.exe"
 
 # Funzione per scaricare ed estrarre i files
 scarica <- function(
@@ -46,159 +50,35 @@ scarica <- function(
   )
 }
 
+ISTAT_API <- function(url) {
+  as.data.table(
+    jsonlite::fromJSON(
+      paste0(url, format(Sys.time(), "%d/%m/%Y"))
+    )[[1]]
+  )
+}
+
+
 #### Codici statistici e unità territoriali ####
 
-ISTAT <- scarica(
-  "http://www.istat.it/storage/codici-unita-amministrative/Elenco-codici-statistici-e-denominazioni-delle-unit%C3%A0-territoriali.zip",
-  file.path(
-    "Elenco-codici-statistici-e-denominazioni-delle-unità-territoriali",
-    "Codici-statistici-e-denominazioni-al-30_06_2024.csv"
-  ),
-  unzip = "unzip",
-  encoding = "Latin-1",
-  colClasses = c(`Codice Comune formato alfanumerico` = "character")
-)
-
+ISTAT <- ISTAT_API("https://situas-servizi.istat.it/publish/reportspooljson?pfun=61&pdata=")
 
 #### Variazioni amministrative territoriali ####
 
-ISTAT_variazioni <- scarica(
-  "https://www.istat.it/storage/codici-unita-amministrative/Variazioni%20amministrative%20e%20territoriali%20dal%201991.zip",
-  file.path(
-    "Variazioni amministrative e territoriali dal 1991",
-    "Variazioni_amministrative_territoriali_dal_01011991.csv"
-  ),
-  unzip = "unzip",
-  encoding = "Latin-1",
-  colClasses = c(
-    `Codice Comune formato alfanumerico` = "character",
-    `Codice del Comune associato alla variazione o nuovo codice Istat del Comune` = "character"
-  )
-)
-
-
-# Tengo solo le variazioni che mi interessano
-ISTAT_variazioni_pulito <- ISTAT_variazioni[
-  !(ISTAT_variazioni$`Tipo variazione` %in% c("AQ", "CE", "CECS")),
-]
-
-# Fix typo
-ISTAT_variazioni_pulito$`Provvedimento e Documento` <- gsub(
-  "novenbre",
-  "novembre",
-  ISTAT_variazioni_pulito$`Provvedimento e Documento`
-)
-ISTAT_variazioni_pulito$`Provvedimento e Documento` <- gsub(
-  "maggio1992",
-  "maggio 1992",
-  ISTAT_variazioni_pulito$`Provvedimento e Documento`
-)
-
-# Definisci la funzione per estrarre e convertire la data
-estrai_data <- function(testo) {
-  # Pattern per riconoscere la data
-  pattern <- "\\b\\d{1,2} [a-z]+ \\d{4}\\b"
-  
-  # Estrazione della data della pubblicazione in Gazzetta come stringa
-  data_string_list <- str_extract_all(testo, pattern)
-  data_string <- sapply(
-    data_string_list, 
-    function(x) {
-      if (length(x) > 0) {
-        return(tail(x, 1))
-      } else {
-        return(NA)
-      }
-    }
-  )
-  
-  # Conversione della stringa in un oggetto Date
-  data <- as.Date(data_string, format = "%d %B %Y")
-  
-  return(data)
-}
-
-# Estraggo le date
-ISTAT_variazioni_pulito$DATA <- estrai_data(ISTAT_variazioni_pulito$`Provvedimento e Documento`)
-ISTAT_variazioni_pulito[
-  `Data decorrenza validità amministrativa` != "",
-  DATA := as.Date(`Data decorrenza validità amministrativa`, format="%d/%m/%Y")
-]
-
-# Ordino la tabella
-ISTAT_variazioni_pulito <- ISTAT_variazioni_pulito[order(DATA)]
-
-# Controllo che non ci siano comuni che vengono spezzettati in altri
-tabella <- ISTAT_variazioni_pulito[
-  `Tipo variazione` %in% c("CS", "AQES"),
-  .(.N),
-  by = .(
-    `Provvedimento e Documento`, 
-    `Denominazione Comune associata alla variazione o nuova denominazione`
-  )
-]
-
-tabella <- tabella[N > 1,]
-
-if (nrow(tabella) > 0) warning("Alcuni comuni sono stati spezzettati")
-
-# Controllo che non ci siano comuni che vengono spezzettati in altri
-tabella <- ISTAT_variazioni_pulito[
-  `Tipo variazione` %in% c("ES"),
-  .(.N),
-  by = .(`Provvedimento e Documento`, `Denominazione Comune`)
-]
-
-tabella <- tabella[N > 1,]
-
-if (nrow(tabella) > 0) warning("Alcuni comuni sono stati spezzettati")
-
-# Funzione che ricostruisce le variazioni nel codice e nel nome del comune
-comune_attuale <- function(indice, variazioni) {
-  
-  if (is.na(indice)) return(list(comune = NA, codice = NA))
-  
-  # Recupero il codice del comune corrispondente al nome trovato
-  codice <- variazioni$`Codice Comune formato alfanumerico`[indice]
-  
-  # Scorre tutte le variazioni successive alla riga trovata
-  for (i in indice:nrow(variazioni)) {
-    # Se la variazione non si riferisce al comune vai avanti
-    if (variazioni$`Codice Comune formato alfanumerico`[i] != codice) next
-    
-    # Solo se la variazione comporta un cambio di codice del comune,
-    # Aggiorna il codice del comune
-    if (variazioni$`Tipo variazione`[i] %in% c("ES", "CD", "AP")) {
-      codice <- 
-        variazioni$`Codice del Comune associato alla variazione o nuovo codice Istat del Comune`[i]
-    }
-  }
-  
-  # Restituisce il codice finale e il corrispondente nome del comune
-  return(list(
-    comune = ISTAT$`Denominazione in italiano`[
-      match(codice, ISTAT$`Codice Comune formato alfanumerico`)
-    ],
-    codice = codice
-  ))
-}
+ISTAT_traslazione <- ISTAT_API("https://situas-servizi.istat.it/publish/reportspooljson?pfun=304&pdatada=01/01/1991&pdataa=")
 
 
 # Funzione che aggiorna i nomi dei comuni e aggiunge i codici
-aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
+aggiorna_comuni <- function(DT, colonna_nome_comune = "COMUNE") {
   
   cat("Uniformo e aggiorno i nomi dei comuni...\n")
   
   nomi_comuni <- unique(DT[,..colonna_nome_comune][[1]])
   
-  
-  # Considero solo le variazioni avvenute da poco prima l'elezione a oggi
-  variazioni <- ISTAT_variazioni_pulito[DATA > data_elezione - 180]
-  
   tutti_i_nomi <- c(
-    ISTAT$`Denominazione (Italiana e straniera)`,
-    ISTAT$`Denominazione in italiano`,
-    variazioni$`Denominazione Comune`
+    ISTAT$COMUNE,
+    ISTAT$COMUNE_IT,
+    ISTAT_traslazione$COMUNE
   )
   
   
@@ -207,31 +87,34 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
   cerca_nome_identico <- function(nome) {
     # Cerco il nome nei comuni attuali
     matches <- which(
-      toupper(ISTAT$`Denominazione (Italiana e straniera)`) == nome
+      toupper(ISTAT$COMUNE) == nome
     )
     
     if (length(matches) > 0) return(list(
-      comune = ISTAT$`Denominazione in italiano`[matches[1]],
-      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+      comune = ISTAT$COMUNE[matches[1]],
+      codice = ISTAT$PRO_COM_T[matches[1]]
     ))
     
     # Cerco il nome nei comuni attuali
     matches <- which(
-      toupper(ISTAT$`Denominazione in italiano`) == nome
+      toupper(ISTAT$COMUNE_IT) == nome
     )
     
     if (length(matches) > 0) return(list(
-      comune = ISTAT$`Denominazione in italiano`[matches[1]],
-      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+      comune = ISTAT$COMUNE[matches[1]],
+      codice = ISTAT$PRO_COM_T[matches[1]]
     ))
     
     # Cerco il nome nei comuni variati,
     # se lo trovo aggiorno il nome con il nome attuale
     matches <- which(
-      toupper(variazioni$`Denominazione Comune`) == nome
+      toupper(ISTAT_traslazione$COMUNE) == nome
     )
     
-    if (length(matches) > 0) return(comune_attuale(matches[1], variazioni))
+    if (length(matches) > 0) return(list(
+      comune = ISTAT_traslazione$COMUNE_DT_FI[matches[1]],
+      codice = ISTAT_traslazione$PRO_COM_T_DT_FI[matches[1]]
+    ))
     
     return(NA)
   }
@@ -291,18 +174,21 @@ aggiorna_comuni <- function(DT, data_elezione, colonna_nome_comune = "COMUNE") {
     # In base alla posizione dentro "tutti_i_nomi", recupero il codice
     # e il nome del comune dagli elenchi ISTAT
     if (matches[1] <= nrow(ISTAT)) return(list(
-      comune = ISTAT$`Denominazione in italiano`[matches[1]],
-      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1]]
+      comune = ISTAT$COMUNE[matches[1]],
+      codice = ISTAT$PRO_COM_T[matches[1]]
     ))
     
     if (matches[1] <= nrow(ISTAT) * 2) return(list(
-      comune = ISTAT$`Denominazione in italiano`[matches[1] - nrow(ISTAT)],
-      codice = ISTAT$`Codice Comune formato alfanumerico`[matches[1] - nrow(ISTAT)]
+      comune = ISTAT$COMUNE[matches[1] - nrow(ISTAT)],
+      codice = ISTAT$PRO_COM_T[matches[1] - nrow(ISTAT)]
     ))
     
     # Se devo andarlo a cercare nei nomi passati, aggiorno il nome
     # e il codice a quelli attuali
-    return(comune_attuale(matches[1] - nrow(ISTAT) * 2, variazioni))
+    return(list(
+      comune = ISTAT_traslazione$COMUNE_DT_FI[matches[1] - nrow(ISTAT) * 2],
+      codice = ISTAT_traslazione$PRO_COM_T_DT_FI[matches[1] - nrow(ISTAT) * 2]
+    ))
     
   }
   
@@ -371,7 +257,7 @@ tryCatch(
     
     
     # Aggiorno il nome dei comuni
-    camera_2018 <- aggiorna_comuni(camera_2018, as.Date(data_camera_2018))
+    camera_2018 <- aggiorna_comuni(camera_2018)
     
     
     
@@ -394,9 +280,6 @@ tryCatch(
 )
 
 
-
-
-
 #### Camera 2022 ####
 
 data_camera_2022 <- "2022-09-25"
@@ -406,7 +289,7 @@ tryCatch(
     cat("\nDownload dei dati delle elezioni della Camera del 2022...\n")
     camera_2022 <- scarica(
       "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
-      "Camera_Italia_LivComune.txt"
+      "Camera_Italia_LivComune.csv"
     )
     
     
@@ -429,7 +312,7 @@ tryCatch(
     )
     
     # Aggiorno il nome dei comuni
-    camera_2022 <- aggiorna_comuni(camera_2022, as.Date(data_camera_2022))
+    camera_2022 <- aggiorna_comuni(camera_2022)
     
     dati <- rbind(
       dati,
@@ -481,7 +364,7 @@ tryCatch(
     )
     
     # Aggiorno il nome dei comuni
-    regionali_2020 <- aggiorna_comuni(regionali_2020, as.Date("2020-01-26"))
+    regionali_2020 <- aggiorna_comuni(regionali_2020)
     
     dati <- rbind(
       dati,
@@ -531,7 +414,7 @@ tryCatch(
     )
     
     # Aggiorno il nome dei comuni
-    europee_2019 <- aggiorna_comuni(europee_2019, as.Date("2019-05-26"))
+    europee_2019 <- aggiorna_comuni(europee_2019)
     
     dati <- rbind(
       dati,
@@ -556,8 +439,9 @@ tryCatch(
 tryCatch(
   {
     cat("\nDownload dei dati delle elezioni europee del 2024...\n")
-    europee_2024 <- fread(
-      "https://elezioni.interno.gov.it/daithome/documenti/Europee_Scrutini_ITALIA_20240609.csv",
+    europee_2024 <- scarica(
+      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/europee/europee-20240609.zip",
+      "EUROPEE_ITALIA_LivComune.csv",
       encoding = "Latin-1"
     )
     
@@ -568,11 +452,11 @@ tryCatch(
       europee_2024[
         ,
         .(
-          VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
-          DESCR_LISTA = "astensione"
+          NUMVOTI = ELETTORI - sum(NUMVOTI),
+          DESCLISTA = "astensione"
         ),
         by = .(
-          COMUNE,
+          DESCCOMUNE,
           ELETTORI
         )
       ],
@@ -580,7 +464,7 @@ tryCatch(
     )
     
     # Aggiorno il nome dei comuni
-    europee_2024 <- aggiorna_comuni(europee_2024, as.Date("2024-06-08"))
+    europee_2024 <- aggiorna_comuni(europee_2024, colonna_nome_comune = "DESCCOMUNE")
     
     dati <- rbind(
       dati,
@@ -589,8 +473,8 @@ tryCatch(
         ELEZIONE = "europee 2024",
         COMUNE = europee_2024$comune,
         CODICE_COMUNE = europee_2024$codice,
-        LISTA = europee_2024$DESCR_LISTA,
-        VOTI = europee_2024$VOTI_LISTA
+        LISTA = europee_2024$DESCLISTA,
+        VOTI = europee_2024$NUMVOTI
       )
     )
   },
@@ -601,7 +485,7 @@ tryCatch(
 )
 
 # Controlla che non siano presenti codici comune sconosciuti
-stopifnot(length(setdiff(dati$CODICE_COMUNE, ISTAT$`Codice Comune formato alfanumerico`)) == 0)
+stopifnot(length(setdiff(dati$CODICE_COMUNE, ISTAT$PRO_COM_T)) == 0)
 
 # Aggiungo i codici e i nomi di provincia e regione
 dati <- merge(
@@ -609,11 +493,11 @@ dati <- merge(
   ISTAT[
     ,
     .(
-      CODICE_COMUNE = `Codice Comune formato alfanumerico`,
-      CODICE_PROVINCIA = `Codice dell'Unità territoriale sovracomunale \n(valida a fini statistici)`,
-      PROVINCIA = `Denominazione dell'Unità territoriale sovracomunale \n(valida a fini statistici)`,
-      CODICE_REGIONE = `Codice Regione`,
-      REGIONE = `Denominazione Regione`
+      CODICE_COMUNE = PRO_COM_T,
+      CODICE_PROVINCIA = COD_UTS,
+      PROVINCIA = DEN_UTS,
+      CODICE_REGIONE = COD_REG,
+      REGIONE = DEN_REG
     )
   ]
 )
@@ -638,50 +522,45 @@ dati <- dati[
 
 # Popolazione legale ----
 
-# Purtroppo ISTAT non rende disponibile un url per scaricare in automatico
-# i dati della popolazione legale, ho copiato qui il file scaricato 
-# manualmente da http://dati-censimentipermanenti.istat.it/
-
-pop_legale <- fread("dati/DCSS_POP_LEGALE_2021.csv")
-
-# Considero solo le variazioni avvenute dopo l'ultimo censimento
-# della popolazione legale
-variazioni <- ISTAT_variazioni_pulito[DATA >= as.Date("2021-12-31")]
-setkey(variazioni, DATA)
+sdmx <- readSDMX("https://esploradati.istat.it/SDMXWS/rest/data/IT1,DF_DCSS_POP_LEGALE_TV,1.0/A../ALL/?detail=full&dimensionAtObservation=TIME_PERIOD")
+pop_legale <- as.data.table(as.data.frame(sdmx))
 
 # Aggiorno i codici dei comuni
-pop_legale[
-  !ISTAT,
-  ITTER107 := sapply(
-    match(ITTER107, variazioni$`Codice Comune formato alfanumerico`),
-    function(indice) comune_attuale(indice, variazioni)$codice
-  ),
-  on = c(ITTER107 = "Codice Comune formato alfanumerico")
+pop_legale[ISTAT_traslazione,
+           on = .(REF_AREA = PRO_COM_T),
+           `:=`(
+             PRO_COM_T_DT_FI = i.PRO_COM_T_DT_FI
+           )
 ]
 
-# TODO: test per evitare che vengano cancellati dei comuni non trovati
+pop_legale <- pop_legale[!is.na(PRO_COM_T_DT_FI)]
 
-# Associo ad ogni codice ITTER107 i dati del comune dalla tabella ISTAT
+# Sommo la popolazione dei comuni fusi insieme
 pop_legale <- pop_legale[
-  ISTAT,
-  .(
-    CODICE_REGIONE = `Codice Regione`,
-    REGIONE = `Denominazione Regione`,
-    CODICE_PROVINCIA = `Codice dell'Unità territoriale sovracomunale \n(valida a fini statistici)`,
-    PROVINCIA = `Denominazione dell'Unità territoriale sovracomunale \n(valida a fini statistici)`,
-    CODICE_COMUNE = ITTER107,
-    COMUNE = `Denominazione in italiano`,
-    POPOLAZIONE = Value
-  ),
-  on = c(ITTER107 = "Codice Comune formato alfanumerico")
+  , .(POPOLAZIONE = sum(obsValue, na.rm = TRUE)),
+  by = PRO_COM_T_DT_FI
 ]
+
+#Rinomino le colonne
+pop_legale[
+  ISTAT,
+  on = .(PRO_COM_T_DT_FI = PRO_COM_T),
+  `:=`(
+    COMUNE = i.COMUNE,
+    CODICE_PROVINCIA = i.COD_UTS,
+    PROVINCIA = i.DEN_UTS,
+    CODICE_REGIONE = i.COD_REG,
+    REGIONE = i.DEN_REG
+  )
+]
+setnames(pop_legale, "PRO_COM_T_DT_FI", "CODICE_COMUNE")
 
 
 # Filtro e salvataggio ----
 
 # Tiene solo i dati dell'Emilia-Romagna
-pop_legale <- pop_legale[CODICE_REGIONE == 8]
-dati <- dati[CODICE_REGIONE == 8]
+pop_legale <- pop_legale[CODICE_REGIONE == "08"]
+dati <- dati[CODICE_REGIONE == "08"]
 
 # Salvo il file
 save(dati, pop_legale, file = "dati/dati.RData")
