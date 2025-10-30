@@ -5,50 +5,122 @@ library(rsdmx)
 # TODO: trasformare le coppie CODICE/NOME in factors
 # TODO: dati VdA 2022
 
-path_to_unzipper <- "C:/Program Files/Git/usr/bin/unzip.exe"
-
-# Funzione per scaricare ed estrarre i files
-scarica <- function(
-    url,
-    internal_file_paths,
-    unzip = "internal",
-    encoding = "unknown",
-    colClasses = NULL
-) {
-  # Preparo il nome del file temporaneo da scaricare
-  file_path <- tempfile(fileext = ".zip")
-  
-  # Scarico il file zip
-  download.file(url, file_path)
-  
-  # Estraggo i file
-  unzip(file_path, internal_file_paths, exdir = tempdir(), unzip = unzip)
-  
-  # Se mi interessa solo un file lo restituisco un data.table
-  if (length(internal_file_paths) == 1) {
-    return(
-      fread(
-        file.path(tempdir(), internal_file_paths), 
-        encoding = encoding,
-        colClasses = colClasses
+fonti <- list(
+  list(
+    elezione = "camera 2018",
+    data = "2018-03-04",
+    url = "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20180304.zip",
+    files = list(
+      list(
+        internal_path = "Camera2018_livComune.txt",
+        encoding = "Latin-1",
+        tipo = "scrutinio",
+        colonne = list(
+          VOTI = "VOTI_LISTA"
+        ),
+        funzione = function(DT) {
+          # Poiché VOTI_LISTA è NA per la circoscrizione AOSTA, copio in quella 
+          # colonna i voti per il candidato (Nella circoscrizione Aosta ci sono solo 
+          # candidati uninominali)
+          return(DT[
+            CIRCOSCRIZIONE == "AOSTA",
+            VOTI_LISTA := VOTI_CANDIDATO
+          ])
+        }
       )
     )
-  }
+  ),
   
-  # Se mi interessano più file restituisco una lista di data.tables
-  return(
-    lapply(
-      internal_file_paths,
-      function(internal_file_path) {
-        fread(
-          file.path(tempdir(), internal_file_path), 
-          encoding = encoding,
-          colClasses = colClasses
+  list(
+    elezione = "camera 2022",
+    data = "2022-09-25",
+    url = "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
+    files = list(
+      list(
+        internal_path = "Camera_Italia_LivComune.csv",
+        tipo = "scrutinio",
+        colonne = list(
+          VOTI = "VOTILISTA",
+          ELETTORI = "ELETTORITOT",
+          LISTA = "DESCRLISTA"
         )
-      }
+        
+      )
+    )
+  ),
+  
+  list(
+    elezione = "regionali 2020",
+    data = "2020-01-26",
+    url = "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200126.zip",
+    files = list(
+      list(
+        internal_path = "regionali-20200126.txt",
+        tipo = "scrutinio",
+        colonne = list(
+          VOTI = "VOTI_LISTA"
+        )
+      )
+    )
+  ),
+  
+  list(
+    elezione = "europee 2019",
+    data = "2019-05-26",
+    url = "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/europee/europee-20190526.zip",
+    files = list(
+      list(
+        internal_path = "europee-20190526.txt",
+        encoding = "Latin-1",
+        tipo = "scrutinio",
+        colonne = list(
+          VOTI = "VOTI_LISTA"
+        )
+      )
+    )
+  ),
+  
+  list(
+    elezione = "europee 2024",
+    data = "2024-06-08",
+    url = "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/europee/europee-20240609.zip",
+    files = list(
+      list(
+        internal_path = "EUROPEE_ITALIA_LivComune.csv",
+        encoding = "Latin-1",
+        tipo = "scrutinio",
+        colonne = list(
+          VOTI = "NUMVOTI",
+          LISTA = "DESCLISTA",
+          COMUNE = "DESCCOMUNE"
+        )
+      )
+    )
+  ),
+  
+  list(
+    elezione = "regionali 2024",
+    data = "2024-11-17",
+    url = "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20241117.zip",
+    files = list(
+      list(
+        internal_path = "Regionali_EmiliaRomagna_2024_Scrutini.csv",
+        tipo = "scrutinio",
+        colonne = list(
+          VOTI = "VOTI_LISTA",
+          ELETTORI = "ELETTORI_TOTALI"
+        )
+      ),
+      
+      list(
+        internal_path = "Regionali_EmiliaRomagna_2024_Preferenze.csv",
+        tipo = "preferenze",
+        encoding = "Latin-1"
+      )
     )
   )
-}
+)
+
 
 ISTAT_API <- function(url) {
   as.data.table(
@@ -69,11 +141,11 @@ ISTAT_traslazione <- ISTAT_API("https://situas-servizi.istat.it/publish/reportsp
 
 
 # Funzione che aggiorna i nomi dei comuni e aggiunge i codici
-aggiorna_comuni <- function(DT, colonna_nome_comune = "COMUNE") {
+aggiorna_comuni <- function(DT) {
   
   cat("Uniformo e aggiorno i nomi dei comuni...\n")
   
-  nomi_comuni <- unique(DT[,..colonna_nome_comune][[1]])
+  nomi_comuni <- unique(DT[,"COMUNE"][[1]])
   
   tutti_i_nomi <- c(
     ISTAT$COMUNE,
@@ -200,8 +272,132 @@ aggiorna_comuni <- function(DT, colonna_nome_comune = "COMUNE") {
   cat("\nTerminato l'aggiornamento dei nomi dei comuni\n")
   
   # Associo i nomi e i codici nuovi alla tabella dei dati elettorali
-  return(merge(DT, risultato, by.x = colonna_nome_comune, by.y = "nome_originario"))
+  return(merge(DT, risultato, by.x = "COMUNE", by.y = "nome_originario"))
   
+}
+
+scarica_fonte <- function(
+    elezione,
+    data_elezione,
+    url_fonte,
+    files
+) {
+  tryCatch(
+    {
+      cat("\nDownload dei dati delll'elezione", elezione,"...\n")
+      
+      # Preparo il nome del file temporaneo da scaricare
+      file_path <- tempfile(fileext = ".zip")
+      
+      # Scarico il file zip
+      download.file(url_fonte, file_path)
+      
+      # Estraggo i file
+      unzip(file_path, exdir = tempdir())
+      
+      # Elaboro i file
+      lapply(
+        files,
+        function(dettagli_file) {
+          
+          # Leggo il file
+          DT <- fread(
+            file.path(tempdir(), dettagli_file$internal_path), 
+            encoding = ifelse(is.null(dettagli_file$encoding), "unknown", dettagli_file$encoding)
+          )
+          
+          # Se necessario applico una funzione custom per pulire il file
+          if (!is.null(dettagli_file$funzione)) {
+            DT <- dettagli_file$funzione(DT)
+          }
+          
+          # Standardizzo i nomi
+          mapply(
+            function(nome_standard, nome_non_standard) setnames(DT, nome_non_standard, nome_standard),
+            names(dettagli_file$colonne),
+            dettagli_file$colonne
+          )
+          
+          # Aggiorno i nomi dei comuni
+          DT <- aggiorna_comuni(DT)
+          
+          if (dettagli_file$tipo == "scrutinio") {
+            # Tengo solo le colonne di interesse
+            DT <- DT[,c(
+              "comune",
+              "codice",
+              "ELETTORI",
+              "LISTA",
+              "VOTI"
+            )]
+            
+            astensione <- DT[
+              ,
+              .(
+                VOTI = ELETTORI - sum(VOTI),
+                LISTA = "astensione"
+              ),
+              by = .(
+                comune,
+                codice,
+                ELETTORI
+              )
+            ]
+            DT <- rbind(DT, astensione, fill = TRUE)
+            
+            dati <<-  rbind(
+              dati,
+              data.table(
+                DATA = as.POSIXct(data_elezione),
+                ELEZIONE = elezione,
+                COMUNE = DT$comune,
+                CODICE_COMUNE = DT$codice,
+                LISTA = DT$LISTA,
+                VOTI = DT$VOTI
+              )
+            )
+          } else {
+            # Tengo solo le colonne di interesse e sommo le preferenze per comune
+            DT <- DT[
+              ,
+              .(
+                PREFERENZE = sum(PREFERENZE)
+              ),
+              by = .(
+                comune,
+                codice,
+                LISTA,
+                NOME,
+                COGNOME
+              )
+            ]
+            
+            preferenze <<- rbind(
+              preferenze,
+              data.table(
+                DATA = as.POSIXct(data_elezione),
+                ELEZIONE = elezione,
+                COMUNE = DT$comune,
+                CODICE_COMUNE = DT$codice,
+                LISTA = DT$LISTA,
+                NOME = DT$NOME,
+                COGNOME = DT$COGNOME,
+                PREFERENZE = DT$PREFERENZE
+              )
+            )
+          }
+          
+          
+          
+        }
+      )
+      
+    },
+    error = function(e) warning(
+      "Non sono riuscito a caricare i dati delle elezioni ",
+      elezione, ", a causa di questo errore: ", e
+    )
+  )
 }
 
 #### Inizializzo data.table dati ####
@@ -215,332 +411,54 @@ dati <- data.table(
   VOTI = numeric(0)
 )
 
-#### Camera 2018 ####
+preferenze <- data.table(
+  DATA = as.POSIXct(character(0)),
+  ELEZIONE = character(0),
+  COMUNE = character(0),
+  CODICE_COMUNE = character(0),
+  LISTA = character(0),
+  NOME = character(0),
+  COGNOME = character(0),
+  PREFERENZE = numeric(0)
+)
 
-data_camera_2018 <- "2018-03-04"
+#### Scarico le fonti ####
 
-tryCatch(
-  {
-    cat("\nDownload dei dati delle elezioni della Camera del 2018...\n")
-    camera_2018 <- scarica(
-      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20180304.zip",
-      "Camera2018_livComune.txt",
-      encoding = "Latin-1"
+lapply(
+  fonti,
+  function(fonte) {
+    scarica_fonte(
+      fonte$elezione,
+      fonte$data,
+      fonte$url,
+      fonte$files
     )
-    
-    # Poiché VOTI_LISTA è NA per la circoscrizione AOSTA, copio in quella 
-    # colonna i voti per il candidato (Nella circoscrizione Aosta ci sono solo 
-    # candidati uninominali)
-    camera_2018[
-      CIRCOSCRIZIONE == "AOSTA",
-      VOTI_LISTA := VOTI_CANDIDATO
-    ]
-    
-    # Calcolo l'astensione
-    astensione <- camera_2018[
-      ,
-      .(
-        VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
-        LISTA = "astensione"
-      ),
-      by = .(
-        CIRCOSCRIZIONE,
-        COLLEGIOPLURINOMINALE,
-        COLLEGIOUNINOMINALE,
-        COMUNE,
-        ELETTORI,
-        VOTANTI,
-        SCHEDE_BIANCHE
-      )
-    ]
-    camera_2018 <- rbind(camera_2018, astensione, fill = TRUE)
-    
-    
-    # Aggiorno il nome dei comuni
-    camera_2018 <- aggiorna_comuni(camera_2018)
-    
-    
-    
-    dati <- rbind(
-      dati,
-      data.table(
-        DATA = as.POSIXct(data_camera_2018),
-        ELEZIONE = "camera 2018",
-        COMUNE = camera_2018$comune,
-        CODICE_COMUNE = camera_2018$codice,
-        LISTA = camera_2018$LISTA,
-        VOTI = camera_2018$VOTI_LISTA
-      )
-    )
-  },
-  error = function(e) warning(
-    "Non sono riuscito a caricare i dati delle elezioni ",
-    "della Camera del 2018, a causa di questo errore: ", e
-  )
+  }
 )
 
 
-#### Camera 2022 ####
-
-data_camera_2022 <- "2022-09-25"
-
-tryCatch(
-  {
-    cat("\nDownload dei dati delle elezioni della Camera del 2022...\n")
-    camera_2022 <- scarica(
-      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/camera/camera-20220925.zip",
-      "Camera_Italia_LivComune.csv"
-    )
-    
-    
-    # Calcolo l'astensione
-    camera_2022 <- rbind(
-      camera_2022,
-      camera_2022[
-        ,
-        .(
-          VOTILISTA = ELETTORITOT - sum(VOTILISTA),
-          DESCRLISTA = "astensione"
-        ),
-        by = .(
-          COLLUNINOM,
-          COMUNE,
-          ELETTORITOT
-        )
-      ],
-      fill = TRUE
-    )
-    
-    # Aggiorno il nome dei comuni
-    camera_2022 <- aggiorna_comuni(camera_2022)
-    
-    dati <- rbind(
-      dati,
-      data.table(
-        DATA = as.POSIXct(data_camera_2022),
-        ELEZIONE = "camera 2022",
-        COMUNE = camera_2022$comune,
-        CODICE_COMUNE = camera_2022$codice,
-        LISTA = camera_2022$DESCRLISTA,
-        VOTI = camera_2022$VOTILISTA
-      )
-    )
-  },
-  error = function(e) warning(
-    "Non sono riuscito a caricare i dati delle elezioni ",
-    "della Camera del 2022, a causa di questo errore: ", e
-  )
-)
-
-
-#### Regionali 2020 ####
-
-tryCatch(
-  {
-    cat("\nDownload dei dati delle elezioni regionali del 2020...\n")
-    regionali_2020 <- scarica(
-      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20200126.zip",
-      "regionali-20200126.txt"
-    )
-    
-    
-    # Calcolo l'astensione
-    regionali_2020 <- rbind(
-      regionali_2020,
-      regionali_2020[
-        ,
-        .(
-          VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
-          LISTA = "astensione"
-        ),
-        by = .(
-          REGIONE,
-          CIRCOSCRIZIONE,
-          COMUNE,
-          ELETTORI
-        )
-      ],
-      fill = TRUE
-    )
-    
-    # Aggiorno il nome dei comuni
-    regionali_2020 <- aggiorna_comuni(regionali_2020)
-    
-    dati <- rbind(
-      dati,
-      data.table(
-        DATA = as.POSIXct("2020-01-26"),
-        ELEZIONE = "regionali 2020",
-        COMUNE = regionali_2020$comune,
-        CODICE_COMUNE = regionali_2020$codice,
-        LISTA = regionali_2020$LISTA,
-        VOTI = regionali_2020$VOTI_LISTA
-      )
-    )
-  },
-  error = function(e) warning(
-    "Non sono riuscito a caricare i dati delle elezioni ",
-    "regionali del 2020, a causa di questo errore: ", e
-  )
-)
-
-#### Europee 2019 ####
-
-tryCatch(
-  {
-    cat("\nDownload dei dati delle elezioni europee del 2019...\n")
-    europee_2019 <- scarica(
-      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/europee/europee-20190526.zip",
-      "europee-20190526.txt",
-      encoding = "Latin-1"
-    )
-    
-    
-    # Calcolo l'astensione
-    europee_2019 <- rbind(
-      europee_2019,
-      europee_2019[
-        ,
-        .(
-          VOTI_LISTA = ELETTORI - sum(VOTI_LISTA),
-          LISTA = "astensione"
-        ),
-        by = .(
-          COMUNE,
-          ELETTORI
-        )
-      ],
-      fill = TRUE
-    )
-    
-    # Aggiorno il nome dei comuni
-    europee_2019 <- aggiorna_comuni(europee_2019)
-    
-    dati <- rbind(
-      dati,
-      data.table(
-        DATA = as.POSIXct("2019-05-26"),
-        ELEZIONE = "europee 2019",
-        COMUNE = europee_2019$comune,
-        CODICE_COMUNE = europee_2019$codice,
-        LISTA = europee_2019$LISTA,
-        VOTI = europee_2019$VOTI_LISTA
-      )
-    )
-  },
-  error = function(e) warning(
-    "Non sono riuscito a caricare i dati delle elezioni ",
-    "europee del 2019, a causa di questo errore: ", e
-  )
-)
-
-#### Europee 2024 ####
-
-tryCatch(
-  {
-    cat("\nDownload dei dati delle elezioni europee del 2024...\n")
-    europee_2024 <- scarica(
-      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/europee/europee-20240609.zip",
-      "EUROPEE_ITALIA_LivComune.csv",
-      encoding = "Latin-1"
-    )
-    
-    
-    # Calcolo l'astensione
-    europee_2024 <- rbind(
-      europee_2024,
-      europee_2024[
-        ,
-        .(
-          NUMVOTI = ELETTORI - sum(NUMVOTI),
-          DESCLISTA = "astensione"
-        ),
-        by = .(
-          DESCCOMUNE,
-          ELETTORI
-        )
-      ],
-      fill = TRUE
-    )
-    
-    # Aggiorno il nome dei comuni
-    europee_2024 <- aggiorna_comuni(europee_2024, colonna_nome_comune = "DESCCOMUNE")
-    
-    dati <- rbind(
-      dati,
-      data.table(
-        DATA = as.POSIXct("2024-06-08"),
-        ELEZIONE = "europee 2024",
-        COMUNE = europee_2024$comune,
-        CODICE_COMUNE = europee_2024$codice,
-        LISTA = europee_2024$DESCLISTA,
-        VOTI = europee_2024$NUMVOTI
-      )
-    )
-  },
-  error = function(e) warning(
-    "Non sono riuscito a caricare i dati delle elezioni ",
-    "europee del 2024, a causa di questo errore: ", e
-  )
-)
-
-#### Regionali 2024 ####
-
-tryCatch(
-  {
-    cat("\nDownload dei dati delle elezioni regionali del 2024...\n")
-    regionali_2024 <- scarica(
-      "https://elezionistorico.interno.gov.it/daithome/documenti/opendata/regionali/regionali-20241117.zip",
-      "Regionali_EmiliaRomagna_2024_Scrutini.csv"
-    )
-    
-    
-    # Calcolo l'astensione
-    regionali_2024 <- rbind(
-      regionali_2024,
-      regionali_2024[
-        ,
-        .(
-          VOTI_LISTA = ELETTORI_TOTALI - sum(VOTI_LISTA),
-          LISTA = "astensione"
-        ),
-        by = .(
-          REGIONE,
-          CIRCOSCRIZIONE,
-          COMUNE,
-          ELETTORI_TOTALI
-        )
-      ],
-      fill = TRUE
-    )
-    
-    # Aggiorno il nome dei comuni
-    regionali_2024 <- aggiorna_comuni(regionali_2024)
-    
-    dati <- rbind(
-      dati,
-      data.table(
-        DATA = as.POSIXct("2024-11-17"),
-        ELEZIONE = "regionali 2024",
-        COMUNE = regionali_2024$comune,
-        CODICE_COMUNE = regionali_2024$codice,
-        LISTA = regionali_2024$LISTA,
-        VOTI = regionali_2024$VOTI_LISTA
-      )
-    )
-  },
-  error = function(e) warning(
-    "Non sono riuscito a caricare i dati delle elezioni ",
-    "regionali del 2024, a causa di questo errore: ", e
-  )
-)
 
 # Controlla che non siano presenti codici comune sconosciuti
 stopifnot(length(setdiff(dati$CODICE_COMUNE, ISTAT$PRO_COM_T)) == 0)
+stopifnot(length(setdiff(preferenze$CODICE_COMUNE, ISTAT$PRO_COM_T)) == 0)
 
 # Aggiungo i codici e i nomi di provincia e regione
 dati <- merge(
   dati,
+  ISTAT[
+    ,
+    .(
+      CODICE_COMUNE = PRO_COM_T,
+      CODICE_PROVINCIA = COD_UTS,
+      PROVINCIA = DEN_UTS,
+      CODICE_REGIONE = COD_REG,
+      REGIONE = DEN_REG
+    )
+  ]
+)
+
+preferenze <- merge(
+  preferenze,
   ISTAT[
     ,
     .(
@@ -614,7 +532,7 @@ pop_legale <- pop_legale[CODICE_REGIONE == "08"]
 dati <- dati[CODICE_REGIONE == "08"]
 
 # Salvo il file
-save(dati, pop_legale, file = "dati/dati.RData")
+save(dati, pop_legale, preferenze, file = "dati/dati.RData")
 
 # TODO: parallelizzare e/o usare i join di data.table
 
