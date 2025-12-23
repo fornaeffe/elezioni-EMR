@@ -35,9 +35,9 @@ library(parallel)
 library(kableExtra)
 library(zoo)
 
-scenario <- "base"
+scenario <- "scenari/BO_insieme.xlsx"
 
-data_elezione <- as.POSIXct("2024-11-17")
+data_elezione <- as.POSIXct("2027-03-01")
 
 ```
 
@@ -47,7 +47,17 @@ data_elezione <- as.POSIXct("2024-11-17")
 load("dati/dati.RData")
 
 # Carico lo scenario
-load(paste0("scenari/", scenario, ".RData"))
+
+liste <- as.data.table(read_xlsx(scenario, "liste_future"))
+corrispondenza_liste <- as.data.table(read_xlsx(scenario, "flussi_previsti"))
+
+# FIX
+# TODO evitare che si generi il problema di una lista senza nome
+corrispondenza_liste[
+  is.na(LISTA),
+  LISTA := ""
+]
+
 
 elezioni <- unique(dati[,.(DATA, ELEZIONE)])
 
@@ -59,17 +69,18 @@ elezioni <- unique(dati[,.(DATA, ELEZIONE)])
 
 ##### Corrispondenza liste - aree #####
 
-# Appiattisco la matrice di corrispondenza tra liste precedenti e attuali
-setnames(matrice_liste, "LISTA", "LISTA_ORIGINALE")
-corrispondenza_liste <- melt(
-  matrice_liste,
-  c("DATA", "ELEZIONE", "LISTA_ORIGINALE"),
-  variable.name = "LISTA",
-  value.name = "FATTORE"
+# Converto i nomi
+setnames(
+  corrispondenza_liste, 
+  c("LISTA", "LISTA_FUTURA", "FRAZIONE"),
+  c("LISTA_ORIGINALE", "LISTA", "FATTORE")
 )
 
-# Rimuovo le righe inutili
-corrispondenza_liste <- corrispondenza_liste[FATTORE != 0]
+setnames(
+  liste,
+  "LISTA_FUTURA",
+  "LISTA"
+)
 
 # Normalizzo
 setkey(corrispondenza_liste, ELEZIONE, LISTA_ORIGINALE, LISTA)
